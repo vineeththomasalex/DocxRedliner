@@ -1,0 +1,153 @@
+/* Diff highlighting styles */
+
+.block {
+  margin-bottom: 16px;
+  line-height: 1.6;
+  padding: 8px 0;
+}
+
+.block-unchanged {
+  color: #24292f;
+}
+
+.block-modified {
+  padding-left: 8px;
+}
+
+.block-inserted {
+  background-color: #dafbe1;
+  border-left: 3px solid #2da44e;
+  padding-left: 8px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.block-deleted {
+  background-color: #ffdce0;
+  border-left: 3px solid #cf222e;
+  padding-left: 8px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.block-placeholder {
+  background-color: #f6f8fa;
+  color: #8c959f;
+  padding: 8px;
+  font-style: italic;
+  min-height: 40px;
+}
+
+/* Text-level diff highlighting */
+.diff-insert {
+  background-color: #acf2bd;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.diff-delete {
+  background-color: #ffccd7;
+  text-decoration: line-through;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.diff-format-change {
+  border-left: 3px solid #0969da;
+  padding-left: 6px;
+  position: relative;
+  cursor: help;
+}
+
+.diff-format-change::before {
+  content: "●";
+  color: #0969da;
+  position: absolute;
+  left: -10px;
+  font-size: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Tooltip for formatting changes */
+.format-tooltip {
+  position: absolute;
+  background: #24292f;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.format-tooltip.visible {
+  opacity: 1;
+}
+
+.format-tooltip::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 10px;
+  width: 8px;
+  height: 8px;
+  background: #24292f;
+  transform: rotate(45deg);
+}
+
+/* Change highlight for navigation */
+.change-highlight {
+  outline: 2px solid #0969da;
+  outline-offset: 4px;
+  border-radius: 4px;
+  scroll-margin-top: 20px;
+}
+
+/* Formatting preservation */
+.formatted-text strong,
+.formatted-text b {
+  font-weight: 700;
+}
+
+.formatted-text em,
+.formatted-text i {
+  font-style: italic;
+}
+
+.formatted-text u {
+  text-decoration: underline;
+}
+
+/* Paragraph styles */
+.para-heading1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 20px 0 12px 0;
+}
+
+.para-heading2 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 16px 0 10px 0;
+}
+
+.para-heading3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 14px 0 8px 0;
+}
+
+.para-normal {
+  font-size: 14px;
+  margin: 8px 0;
+}
+
+/* Empty paragraph */
+.para-empty {
+  min-height: 20px;
+  margin: 8px 0;
+}
