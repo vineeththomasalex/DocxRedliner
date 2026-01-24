@@ -151,3 +151,30 @@
   min-height: 20px;
   margin: 8px 0;
 }
+
+/* Page breaks */
+.block-page-break {
+  margin: 20px 0;
+  text-align: center;
+  padding: 10px 0;
+}
+
+.page-break-indicator {
+  color: #8c959f;
+  font-size: 12px;
+  font-style: italic;
+  border-top: 2px dashed #d0d7de;
+  border-bottom: 2px dashed #d0d7de;
+  padding: 8px 0;
+}
+
+/* When page break is inserted/deleted */
+.block-page-break.block-inserted {
+  background-color: #dafbe1;
+  border-left: 3px solid #2da44e;
+}
+
+.block-page-break.block-deleted {
+  background-color: #ffdce0;
+  border-left: 3px solid #cf222e;
+}

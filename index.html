@@ -51,6 +51,11 @@
             <span id="change-counter" class="change-counter">0 changes</span>
             <button id="next-change" class="nav-button">Next →</button>
             <button id="export-html" class="export-button">Export HTML</button>
+            <button id="export-docx" class="export-button">Export DOCX</button>
+            <label class="view-toggle">
+              <input type="checkbox" id="redline-toggle" class="toggle-checkbox" />
+              <span class="toggle-text">Redlined View</span>
+            </label>
           </div>
         </header>
 
@@ -70,6 +75,10 @@
           <div class="pane pane-current">
             <div class="pane-header">Current</div>
             <div class="pane-content" id="pane-current-content"></div>
+          </div>
+          <div class="pane pane-redlined" style="display: none;">
+            <div class="pane-header">Redlined Document</div>
+            <div class="pane-content" id="pane-redlined-content"></div>
           </div>
         </div>
       </div>

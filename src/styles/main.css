@@ -146,6 +146,17 @@ body {
   background: #0860ca;
 }
 
+#export-docx {
+  margin-left: 10px;
+  background: #2da44e;
+  border-color: #2da44e;
+}
+
+#export-docx:hover {
+  background: #2c974b;
+  border-color: #2c974b;
+}
+
 .change-counter {
   font-size: 14px;
   color: #57606a;
@@ -235,4 +246,36 @@ body {
 
 .pane-content::-webkit-scrollbar-thumb:hover {
   background: #afb8c1;
+}
+
+/* View toggle */
+.view-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 20px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 14px;
+  color: #24292f;
+}
+
+.toggle-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #0969da;
+}
+
+.toggle-text {
+  font-weight: 500;
+}
+
+/* Redlined pane styling */
+.pane-redlined {
+  width: 100%;
+}
+
+.pane-redlined .pane-content {
+  padding: 20px 40px;
 }

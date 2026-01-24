@@ -156,6 +156,23 @@ If you don't want to create documents from scratch:
 2. Copy it and make small edits (add text, delete text, change formatting)
 3. Upload both to test the basic functionality
 
+### Generate HTML Preview
+
+To generate a standalone HTML comparison of the test documents:
+
+```bash
+npm test generate-output
+```
+
+This will:
+- Parse both test documents
+- Generate side-by-side comparison
+- Save output to `test-documents/comparison-output.html`
+- Automatically open in your browser
+- Show direct link to the file
+
+The generated HTML is a self-contained file you can share or archive.
+
 ## Project Structure
 
 ```

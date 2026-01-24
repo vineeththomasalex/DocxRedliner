@@ -64,6 +64,11 @@ export class DocxParser {
     // Process content
     if (Array.isArray(rawData.content)) {
       rawData.content.forEach((item: any, index: number) => {
+        // Log item types for investigation
+        if (item.type && item.type !== 'paragraph' && item.type !== 'heading' && item.type !== 'table') {
+          console.log(`[DocxParser] Unhandled item type at index ${index}:`, item.type, item);
+        }
+
         if (item.type === 'paragraph' || item.type === 'heading') {
           const block = this.normalizeParagraph(item, index);
           if (block) {
@@ -74,6 +79,15 @@ export class DocxParser {
           if (block) {
             blocks.push(block);
           }
+        } else if (item.type === 'page-break' || item.type === 'break') {
+          // Create page break block
+          blocks.push({
+            id: `page-break-${index}`,
+            type: 'page-break',
+            text: '',
+            runs: [],
+            formatting: {}
+          });
         }
       });
     }
@@ -112,16 +126,19 @@ export class DocxParser {
           });
         }
       });
-      // Concatenate all run texts
-      text = runs.map(r => r.text).join('');
+      // Concatenate all run texts with whitespace normalization
+      text = runs.map(r => r.text).join('').trim().replace(/\s+/g, ' ');
     }
 
     // If no runs, create a single run with paragraph-level formatting
     if (runs.length === 0 && text) {
+      // Normalize text before creating run
+      const normalizedText = text.trim().replace(/\s+/g, ' ');
       runs.push({
-        text,
+        text: normalizedText,
         formatting: this.extractFormatting(para)
       });
+      text = normalizedText;
     }
 
     // Skip empty paragraphs
@@ -132,7 +149,7 @@ export class DocxParser {
     return {
       id: this.generateBlockId(text, index),
       type: blockType,
-      text,
+      text: text.trim().replace(/\s+/g, ' '),
       runs,
       formatting: this.extractFormatting(para)
     };
@@ -157,13 +174,14 @@ export class DocxParser {
       return null;
     }
 
+    const normalizedText = text.trim().replace(/\s+/g, ' ');
     return {
-      id: this.generateBlockId(text, index),
+      id: this.generateBlockId(normalizedText, index),
       type: 'table',
-      text: text.trim(),
+      text: normalizedText,
       runs: [
         {
-          text: text.trim(),
+          text: normalizedText,
           formatting: {}
         }
       ],

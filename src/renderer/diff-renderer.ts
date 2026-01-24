@@ -6,6 +6,7 @@ import type { TextFormatting } from '../types/ast.types';
 export class DiffRenderer {
   private leftPane: HTMLElement;
   private rightPane: HTMLElement;
+  private redlinedPane: HTMLElement | null = null;
   private changeElements: HTMLElement[] = [];
 
   constructor(leftPaneId: string, rightPaneId: string) {
@@ -18,6 +19,10 @@ export class DiffRenderer {
 
     this.leftPane = left;
     this.rightPane = right;
+
+    // Add redlined pane reference
+    const redlined = document.getElementById('pane-redlined-content');
+    this.redlinedPane = redlined;
   }
 
   render(diff: DocumentDiff) {
@@ -71,6 +76,18 @@ export class DiffRenderer {
   }
 
   private renderBlock(block: any, state: 'inserted' | 'deleted' | 'unchanged', changeClass: string): string {
+    // Special handling for page breaks
+    if (block.type === 'page-break') {
+      const blockClass = state === 'inserted' ? 'block-inserted' :
+                        state === 'deleted' ? 'block-deleted' :
+                        'block-unchanged';
+      return `<div class="block block-page-break ${blockClass}"${changeClass}>
+        <div class="page-break-indicator">
+          <span>─────── Page Break ───────</span>
+        </div>
+      </div>`;
+    }
+
     const blockClass = state === 'inserted' ? 'block-inserted' :
                       state === 'deleted' ? 'block-deleted' :
                       'block-unchanged';
@@ -196,5 +213,75 @@ export class DiffRenderer {
 
   getChangeElements(): HTMLElement[] {
     return this.changeElements;
+  }
+
+  renderRedlined(diff: DocumentDiff) {
+    if (!this.redlinedPane) return;
+
+    this.changeElements = [];
+    const blocks: string[] = [];
+
+    diff.blockDiffs.forEach((blockDiff) => {
+      blocks.push(this.renderRedlinedBlock(blockDiff));
+    });
+
+    this.redlinedPane.innerHTML = blocks.join('');
+    this.collectChangeElementsRedlined();
+  }
+
+  private renderRedlinedBlock(blockDiff: BlockDiff): string {
+    const changeClass = blockDiff.changeId ? ` data-change-id="${blockDiff.changeId}"` : '';
+
+    switch (blockDiff.type) {
+      case 'insert':
+        // Show inserted block with highlight
+        return this.renderBlock(blockDiff.currentBlock!, 'inserted', changeClass);
+
+      case 'delete':
+        // Show deleted block with strikethrough
+        return this.renderBlock(blockDiff.originalBlock!, 'deleted', changeClass);
+
+      case 'modify':
+        // Show merged block with inline changes
+        return this.renderRedlinedModifiedBlock(blockDiff, changeClass);
+
+      case 'unchanged':
+        // Show unchanged block normally
+        return this.renderBlock(blockDiff.currentBlock!, 'unchanged', '');
+
+      default:
+        return '';
+    }
+  }
+
+  private renderRedlinedModifiedBlock(blockDiff: BlockDiff, changeClass: string): string {
+    if (!blockDiff.wordDiff) {
+      return this.renderBlock(blockDiff.currentBlock!, 'unchanged', changeClass);
+    }
+
+    const block = blockDiff.currentBlock!;
+    const typeClass = `para-${block.type}`;
+    let html = `<div class="block block-modified ${typeClass}"${changeClass}>`;
+
+    // Render word diffs: show deletions first, then insertions
+    blockDiff.wordDiff.forEach((change) => {
+      if (change.removed) {
+        html += `<span class="diff-delete">${this.escapeHtml(change.value)}</span>`;
+      } else if (change.added) {
+        html += `<span class="diff-insert">${this.escapeHtml(change.value)}</span>`;
+      } else {
+        html += this.escapeHtml(change.value);
+      }
+    });
+
+    html += '</div>';
+    return html;
+  }
+
+  private collectChangeElementsRedlined() {
+    if (!this.redlinedPane) return;
+    this.changeElements = Array.from(
+      this.redlinedPane.querySelectorAll('[data-change-id]')
+    ) as HTMLElement[];
   }
 }

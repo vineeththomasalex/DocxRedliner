@@ -1,15 +1,12 @@
 // Diff Engine - Two-level diffing strategy
 
 import { diffWords, type Change } from 'diff';
-import diff_match_patch from 'diff-match-patch';
 import type { DocumentAST, Block, TextFormatting } from '../types/ast.types';
 import type { BlockDiff, DiffChange, DocumentDiff } from '../types/diff.types';
 
 export class DiffEngine {
-  private dmp: diff_match_patch;
-
   constructor() {
-    this.dmp = new diff_match_patch();
+    // Constructor no longer needs to initialize diff-match-patch
   }
 
   diffDocuments(originalAST: DocumentAST, currentAST: DocumentAST): DocumentDiff {
@@ -73,53 +70,114 @@ export class DiffEngine {
   private alignBlocks(originalBlocks: Block[], currentBlocks: Block[]): [Block | null, Block | null][] {
     const alignment: [Block | null, Block | null][] = [];
 
-    // Simple alignment strategy for MVP
-    // Use block text for alignment with diff-match-patch
-    const origTexts = originalBlocks.map(b => b.text).join('\n\n');
-    const currTexts = currentBlocks.map(b => b.text).join('\n\n');
+    // Hash-based block matching with whitespace normalization
+    const normalizeText = (text: string) => text.trim().replace(/\s+/g, ' ');
+    const hashBlock = (block: Block) => normalizeText(block.text);
 
-    const diffs = this.dmp.diff_main(origTexts, currTexts);
-    this.dmp.diff_cleanupSemantic(diffs);
+    // Helper to calculate similarity between two blocks (0-1 scale)
+    const calculateSimilarity = (block1: Block, block2: Block): number => {
+      const text1 = normalizeText(block1.text);
+      const text2 = normalizeText(block2.text);
 
-    // Convert diffs to block alignment
-    let origIndex = 0;
-    let currIndex = 0;
+      if (text1 === text2) return 1.0;
+      if (!text1 || !text2) return 0.0;
 
-    diffs.forEach((diff) => {
-      const [operation, text] = diff;
-      const lineCount = text.split('\n\n').length - 1;
+      // Use simple word overlap ratio
+      const words1 = text1.split(/\s+/);
+      const words2 = text2.split(/\s+/);
+      const set1 = new Set(words1);
+      const set2 = new Set(words2);
 
-      if (operation === 0) { // EQUAL
-        // Match blocks
-        for (let i = 0; i <= lineCount; i++) {
-          if (origIndex < originalBlocks.length && currIndex < currentBlocks.length) {
-            alignment.push([originalBlocks[origIndex++], currentBlocks[currIndex++]]);
-          }
+      let overlap = 0;
+      set1.forEach(word => {
+        if (set2.has(word)) overlap++;
+      });
+
+      return (2 * overlap) / (set1.size + set2.size);
+    };
+
+    // Create hash map of current blocks for fast exact matching
+    const currentMap = new Map<string, Block[]>();
+    currentBlocks.forEach(block => {
+      const hash = hashBlock(block);
+      if (!currentMap.has(hash)) {
+        currentMap.set(hash, []);
+      }
+      currentMap.get(hash)!.push(block);
+    });
+
+    const usedCurrent = new Set<number>();
+    const unmatchedOriginal: Array<{ block: Block, index: number }> = [];
+
+    // First pass: Exact hash matching
+    originalBlocks.forEach((origBlock, origIndex) => {
+      const hash = hashBlock(origBlock);
+      const matches = currentMap.get(hash) || [];
+
+      // Find first unused exact match
+      let matched = false;
+      for (let i = 0; i < matches.length; i++) {
+        const currIndex = currentBlocks.indexOf(matches[i]);
+        if (!usedCurrent.has(currIndex)) {
+          alignment.push([origBlock, matches[i]]);
+          usedCurrent.add(currIndex);
+          matched = true;
+          break;
         }
-      } else if (operation === -1) { // DELETE
-        // Original blocks deleted
-        for (let i = 0; i <= lineCount; i++) {
-          if (origIndex < originalBlocks.length) {
-            alignment.push([originalBlocks[origIndex++], null]);
-          }
-        }
-      } else if (operation === 1) { // INSERT
-        // New blocks added
-        for (let i = 0; i <= lineCount; i++) {
-          if (currIndex < currentBlocks.length) {
-            alignment.push([null, currentBlocks[currIndex++]]);
-          }
-        }
+      }
+
+      if (!matched) {
+        unmatchedOriginal.push({ block: origBlock, index: origIndex });
       }
     });
 
-    // Add any remaining blocks
-    while (origIndex < originalBlocks.length) {
-      alignment.push([originalBlocks[origIndex++], null]);
-    }
-    while (currIndex < currentBlocks.length) {
-      alignment.push([null, currentBlocks[currIndex++]]);
-    }
+    // Second pass: Fuzzy matching for unmatched blocks (likely modifications)
+    const SIMILARITY_THRESHOLD = 0.5; // 50% word overlap
+    unmatchedOriginal.forEach(({ block: origBlock, index: _origIndex }) => {
+      type BestMatchType = { block: Block, index: number, similarity: number };
+      let bestMatch: BestMatchType | null = null;
+
+      currentBlocks.forEach((currBlock, currIndex) => {
+        if (usedCurrent.has(currIndex)) return;
+
+        const similarity = calculateSimilarity(origBlock, currBlock);
+        if (similarity >= SIMILARITY_THRESHOLD) {
+          if (!bestMatch || similarity > bestMatch.similarity) {
+            bestMatch = { block: currBlock, index: currIndex, similarity };
+          }
+        }
+      });
+
+      if (bestMatch) {
+        // Found a similar block - treat as modification
+        const match: BestMatchType = bestMatch;
+        alignment.push([origBlock, match.block]);
+        usedCurrent.add(match.index);
+      } else {
+        // No similar block found - treat as deletion
+        alignment.push([origBlock, null]);
+      }
+    });
+
+    // Add unmatched current blocks (insertions)
+    currentBlocks.forEach((currBlock, index) => {
+      if (!usedCurrent.has(index)) {
+        alignment.push([null, currBlock]);
+      }
+    });
+
+    // Sort alignment by original document order
+    alignment.sort((a, b) => {
+      const aOrigIndex = a[0] ? originalBlocks.indexOf(a[0]) : Infinity;
+      const bOrigIndex = b[0] ? originalBlocks.indexOf(b[0]) : Infinity;
+
+      if (aOrigIndex !== bOrigIndex) return aOrigIndex - bOrigIndex;
+
+      // If both are insertions, sort by current document order
+      const aCurrIndex = a[1] ? currentBlocks.indexOf(a[1]) : Infinity;
+      const bCurrIndex = b[1] ? currentBlocks.indexOf(b[1]) : Infinity;
+      return aCurrIndex - bCurrIndex;
+    });
 
     return alignment;
   }

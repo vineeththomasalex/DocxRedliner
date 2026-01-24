@@ -16,7 +16,7 @@ export interface TextRun {
 
 export interface Block {
   id: string;
-  type: 'paragraph' | 'heading1' | 'heading2' | 'heading3' | 'table';
+  type: 'paragraph' | 'heading1' | 'heading2' | 'heading3' | 'table' | 'page-break';
   text: string;
   runs: TextRun[];
   formatting: TextFormatting;
