@@ -141,9 +141,17 @@
   margin: 14px 0 8px 0;
 }
 
-.para-normal {
+.para-normal,
+.para-paragraph {
   font-size: 14px;
   margin: 8px 0;
+}
+
+.para-table {
+  font-size: 14px;
+  margin: 8px 0;
+  font-family: monospace;
+  white-space: pre-wrap;
 }
 
 /* Empty paragraph */

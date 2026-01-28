@@ -9,6 +9,11 @@ export interface TextFormatting {
   fontSize?: number;
 }
 
+export interface SectionProperties {
+  columnCount?: number;
+  columnSpace?: number; // Space between columns in twips (1/20 of a point)
+}
+
 export interface TextRun {
   text: string;
   formatting: TextFormatting;
@@ -30,4 +35,5 @@ export interface DocumentAST {
     modified?: Date;
   };
   blocks: Block[];
+  sectionProperties?: SectionProperties;
 }

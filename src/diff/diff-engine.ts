@@ -63,7 +63,9 @@ export class DiffEngine {
 
     return {
       blockDiffs,
-      totalChanges: changeId
+      totalChanges: changeId,
+      // Use current document's section properties for the output
+      sectionProperties: currentAST.sectionProperties
     };
   }
 

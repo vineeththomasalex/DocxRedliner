@@ -1,6 +1,7 @@
 // DOCX Parser - Direct parsing in main thread using officeparser browser bundle
 
-import type { DocumentAST, Block, TextRun, TextFormatting } from '../types/ast.types';
+import type { DocumentAST, Block, TextRun, TextFormatting, SectionProperties } from '../types/ast.types';
+import JSZip from 'jszip';
 
 // Declare global officeParser (loaded from script tag)
 declare global {
@@ -46,8 +47,62 @@ export class DocxParser {
     // Parse using officeparser
     const result = await window.officeParser.parseOffice(buffer);
 
+    // Extract section properties directly from DOCX XML
+    const sectionProperties = await this.extractSectionProperties(buffer);
+
     // Normalize the result to our AST format
-    return this.normalizeAST(result);
+    const ast = this.normalizeAST(result);
+    ast.sectionProperties = sectionProperties;
+    return ast;
+  }
+
+  private async extractSectionProperties(buffer: ArrayBuffer): Promise<SectionProperties> {
+    try {
+      const zip = await JSZip.loadAsync(buffer);
+      const documentXml = await zip.file('word/document.xml')?.async('string');
+
+      if (!documentXml) {
+        return {};
+      }
+
+      // Parse the XML
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(documentXml, 'application/xml');
+
+      // Find section properties (w:sectPr) - look for the last one which applies to the document body
+      const sectPrElements = doc.getElementsByTagName('w:sectPr');
+      if (sectPrElements.length === 0) {
+        return {};
+      }
+
+      // Get the last sectPr (document-level section properties)
+      const sectPr = sectPrElements[sectPrElements.length - 1];
+
+      // Find columns element (w:cols)
+      const colsElements = sectPr.getElementsByTagName('w:cols');
+      if (colsElements.length === 0) {
+        return {};
+      }
+
+      const cols = colsElements[0];
+      const numAttr = cols.getAttribute('w:num');
+      const spaceAttr = cols.getAttribute('w:space');
+
+      const sectionProps: SectionProperties = {};
+
+      if (numAttr) {
+        sectionProps.columnCount = parseInt(numAttr, 10);
+      }
+
+      if (spaceAttr) {
+        sectionProps.columnSpace = parseInt(spaceAttr, 10);
+      }
+
+      return sectionProps;
+    } catch (error) {
+      console.warn('Failed to extract section properties:', error);
+      return {};
+    }
   }
 
   private normalizeAST(rawData: any): DocumentAST {

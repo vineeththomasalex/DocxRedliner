@@ -1,7 +1,7 @@
 // Diff Renderer - Renders side-by-side comparison with highlighting
 
 import type { DocumentDiff, BlockDiff } from '../types/diff.types';
-import type { TextFormatting } from '../types/ast.types';
+import type { TextFormatting, SectionProperties } from '../types/ast.types';
 
 export class DiffRenderer {
   private leftPane: HTMLElement;
@@ -36,6 +36,10 @@ export class DiffRenderer {
       leftBlocks.push(leftHtml);
       rightBlocks.push(rightHtml);
     });
+
+    // Apply column styling if document has multiple columns
+    this.applyColumnStyling(this.leftPane, diff.sectionProperties);
+    this.applyColumnStyling(this.rightPane, diff.sectionProperties);
 
     this.leftPane.innerHTML = leftBlocks.join('');
     this.rightPane.innerHTML = rightBlocks.join('');
@@ -94,9 +98,17 @@ export class DiffRenderer {
 
     const typeClass = `para-${block.type}`;
 
-    return `<div class="block ${blockClass} ${typeClass}"${changeClass}>
-      ${this.escapeHtml(block.text)}
-    </div>`;
+    // Render runs with their formatting
+    let content = '';
+    if (block.runs && block.runs.length > 0) {
+      content = block.runs.map((run: any) =>
+        this.renderFormattedText(run.text, run.formatting)
+      ).join('');
+    } else {
+      content = this.escapeHtml(block.text);
+    }
+
+    return `<div class="block ${blockClass} ${typeClass}"${changeClass}>${content}</div>`;
   }
 
   private renderModifiedBlock(blockDiff: BlockDiff, side: 'original' | 'current', changeClass: string): string {
@@ -225,8 +237,27 @@ export class DiffRenderer {
       blocks.push(this.renderRedlinedBlock(blockDiff));
     });
 
+    // Apply column styling if document has multiple columns
+    this.applyColumnStyling(this.redlinedPane, diff.sectionProperties);
+
     this.redlinedPane.innerHTML = blocks.join('');
     this.collectChangeElementsRedlined();
+  }
+
+  private applyColumnStyling(pane: HTMLElement, sectionProperties?: SectionProperties) {
+    if (sectionProperties?.columnCount && sectionProperties.columnCount > 1) {
+      // Convert twips to pixels (1 twip = 1/1440 inch, assume 96 DPI)
+      const spaceInPx = sectionProperties.columnSpace
+        ? Math.round((sectionProperties.columnSpace / 1440) * 96)
+        : 24; // default ~0.25 inch gap
+
+      pane.style.columnCount = String(sectionProperties.columnCount);
+      pane.style.columnGap = `${spaceInPx}px`;
+    } else {
+      // Reset column styling
+      pane.style.columnCount = '';
+      pane.style.columnGap = '';
+    }
   }
 
   private renderRedlinedBlock(blockDiff: BlockDiff): string {
@@ -263,14 +294,20 @@ export class DiffRenderer {
     const typeClass = `para-${block.type}`;
     let html = `<div class="block block-modified ${typeClass}"${changeClass}>`;
 
-    // Render word diffs: show deletions first, then insertions
+    // Render word diffs with formatting preserved
     blockDiff.wordDiff.forEach((change) => {
       if (change.removed) {
-        html += `<span class="diff-delete">${this.escapeHtml(change.value)}</span>`;
+        // Apply original block formatting to deleted text
+        const origBlock = blockDiff.originalBlock!;
+        const formattedText = this.renderFormattedText(change.value, origBlock.formatting);
+        html += `<span class="diff-delete">${formattedText}</span>`;
       } else if (change.added) {
-        html += `<span class="diff-insert">${this.escapeHtml(change.value)}</span>`;
+        // Apply current block formatting to inserted text
+        const formattedText = this.renderFormattedText(change.value, block.formatting);
+        html += `<span class="diff-insert">${formattedText}</span>`;
       } else {
-        html += this.escapeHtml(change.value);
+        // Unchanged text - apply current block formatting
+        html += this.renderFormattedText(change.value, block.formatting);
       }
     });
 

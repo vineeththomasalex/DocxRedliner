@@ -9,10 +9,11 @@ import {
   PageBreak,
   CommentRangeStart,
   CommentRangeEnd,
-  Packer
+  Packer,
+  convertMillimetersToTwip
 } from 'docx';
 import type { DocumentDiff, BlockDiff } from '../types/diff.types';
-import type { Block, TextFormatting } from '../types/ast.types';
+import type { Block, TextFormatting, SectionProperties } from '../types/ast.types';
 
 export class DocxExporter {
   async export(
@@ -40,10 +41,13 @@ export class DocxExporter {
       commentId = result.nextCommentId;
     });
 
+    // Build section properties including columns
+    const sectionProps = this.buildSectionProperties(diff.sectionProperties);
+
     // Build document options
     const docOptions: any = {
       sections: [{
-        properties: {},
+        properties: sectionProps,
         children: paragraphs
       }]
     };
@@ -56,6 +60,23 @@ export class DocxExporter {
     }
 
     return new Document(docOptions);
+  }
+
+  private buildSectionProperties(sectionProperties?: SectionProperties): any {
+    const props: any = {};
+
+    if (sectionProperties?.columnCount && sectionProperties.columnCount > 1) {
+      // Default space between columns is ~0.5 inch = 720 twips if not specified
+      const spaceInTwips = sectionProperties.columnSpace || 720;
+
+      props.column = {
+        count: sectionProperties.columnCount,
+        space: spaceInTwips,
+        equalWidth: true
+      };
+    }
+
+    return props;
   }
 
   private renderBlockDiff(blockDiff: BlockDiff, startCommentId: number): {

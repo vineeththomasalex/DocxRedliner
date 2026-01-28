@@ -1,6 +1,6 @@
 // Diff type definitions
 
-import type { Block, TextFormatting } from './ast.types';
+import type { Block, TextFormatting, SectionProperties } from './ast.types';
 import type { Change } from 'diff';
 
 export type DiffType = 'insert' | 'delete' | 'modify' | 'unchanged';
@@ -33,4 +33,5 @@ export interface BlockDiff {
 export interface DocumentDiff {
   blockDiffs: BlockDiff[];
   totalChanges: number;
+  sectionProperties?: SectionProperties;
 }
