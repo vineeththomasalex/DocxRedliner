@@ -11,6 +11,7 @@ import { ScrollSynchronizer } from './renderer/scroll-sync';
 import { ChangeNavigator } from './renderer/change-navigator';
 import { HtmlExporter } from './ui/html-export';
 import { DocxExporter } from './ui/docx-export';
+import { DocxInPlaceExporter } from './ui/docx-export-inplace';
 import type { DocumentAST } from './types/ast.types';
 import type { DocumentDiff } from './types/diff.types';
 
@@ -23,6 +24,7 @@ class DocRedlinerApp {
   private navigator: ChangeNavigator | null = null;
   private exporter: HtmlExporter;
   private docxExporter: DocxExporter;
+  private docxInPlaceExporter: DocxInPlaceExporter;
   private originalFileName: string = '';
   private currentFileName: string = '';
 
@@ -33,6 +35,9 @@ class DocRedlinerApp {
   // @ts-ignore - Stored for future use
   private currentAST: DocumentAST | null = null;
 
+  // Store raw file buffer for in-place DOCX export
+  private currentFileBuffer: ArrayBuffer | null = null;
+
   // Track current view mode
   private currentViewMode: 'side-by-side' | 'redlined' = 'side-by-side';
 
@@ -42,6 +47,7 @@ class DocRedlinerApp {
     this.diffEngine = new DiffEngine();
     this.exporter = new HtmlExporter();
     this.docxExporter = new DocxExporter();
+    this.docxInPlaceExporter = new DocxInPlaceExporter();
 
     this.fileUpload.onFilesReady((original, current) => {
       this.originalFileName = original.name;
@@ -58,6 +64,9 @@ class DocRedlinerApp {
     try {
       // Show progress
       this.showProgress('Parsing documents...');
+
+      // Store the current file buffer for in-place DOCX export
+      this.currentFileBuffer = await currentFile.arrayBuffer();
 
       // Parse both documents
       const [originalAST, currentAST] = await Promise.all([
@@ -201,10 +210,16 @@ class DocRedlinerApp {
         return;
       }
 
-      await this.docxExporter.export(
+      if (!this.currentFileBuffer) {
+        alert('Current file buffer not available. Please try comparing documents again.');
+        return;
+      }
+
+      // Use in-place exporter to preserve original formatting
+      await this.docxInPlaceExporter.export(
         this.currentDiff,
-        this.originalFileName,
-        this.currentFileName
+        this.currentFileBuffer,
+        this.originalFileName
       );
     } catch (error) {
       console.error('DOCX export failed:', error);
