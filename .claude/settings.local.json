@@ -26,7 +26,10 @@
       "Bash(cmd /c \"npx vite\")",
       "Bash(node:*)",
       "Bash(npm:*)",
-      "mcp__asa__report_progress"
+      "mcp__asa__report_progress",
+      "mcp__asa__build_and_validate",
+      "Bash(npx tsc --noEmit)",
+      "WebFetch(domain:c-rex.net)"
     ]
   }
 }
