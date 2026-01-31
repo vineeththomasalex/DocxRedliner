@@ -48,11 +48,43 @@ npm run build
 
 # Preview production build
 npm run preview
+
+# Deploy to GitHub Pages
+npm run deploy
 ```
 
 ### Development Server
 
 The dev server runs at `http://localhost:5173/`
+
+## Live Demo
+
+Try it now: **https://vineeththomasalex.github.io/DocxRedliner/**
+
+## Deployment
+
+The app is deployed to GitHub Pages from the `gh-pages` branch.
+
+### Deploy Updates
+
+```bash
+npm run deploy
+```
+
+This command:
+1. Builds the production bundle (`npm run build`)
+2. Pushes the `dist/` folder to the `gh-pages` branch
+3. GitHub Pages automatically serves the updated site
+
+### GitHub Pages Configuration
+
+The repository is configured to deploy from the `gh-pages` branch:
+- **Source**: Deploy from a branch
+- **Branch**: `gh-pages` / `/ (root)`
+
+### Vite Configuration
+
+The `vite.config.ts` uses `base: './'` to ensure all asset paths are relative, allowing the app to work in any subdirectory (like `/DocxRedliner/`).
 
 ## Usage
 
