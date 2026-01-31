@@ -28,3 +28,6 @@ dist-ssr
 
 # Windows artifacts
 nul
+
+# Claude Code local settings
+.claude/settings.local.json
