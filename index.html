@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DOCX Redliner</title>
+    <!-- Load officeparser browser bundle before app -->
+    <script src="./officeparser.browser.js"></script>
+    <script type="module" crossorigin src="./assets/index-tjxA_Bc7.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BBJX8wRn.css">
+  </head>
+  <body>
+    <div id="app">
+      <div class="redliner-container">
+        <header class="redliner-header">
+          <div class="upload-section">
+            <div class="upload-box">
+              <label for="original-upload" class="upload-label">
+                <div class="upload-icon">📄</div>
+                <div class="upload-text">
+                  <strong>Original Document</strong>
+                  <span>Drop .docx file or click to browse</span>
+                </div>
+              </label>
+              <input
+                type="file"
+                id="original-upload"
+                accept=".docx"
+                class="file-input"
+              />
+              <div class="file-name" id="original-name"></div>
+            </div>
+            <div class="upload-box">
+              <label for="current-upload" class="upload-label">
+                <div class="upload-icon">📄</div>
+                <div class="upload-text">
+                  <strong>Current Document</strong>
+                  <span>Drop .docx file or click to browse</span>
+                </div>
+              </label>
+              <input
+                type="file"
+                id="current-upload"
+                accept=".docx"
+                class="file-input"
+              />
+              <div class="file-name" id="current-name"></div>
+            </div>
+          </div>
+
+          <div class="controls" id="controls" style="display: none;">
+            <button id="prev-change" class="nav-button">← Previous</button>
+            <span id="change-counter" class="change-counter">0 changes</span>
+            <button id="next-change" class="nav-button">Next →</button>
+            <button id="export-html" class="export-button">Export HTML</button>
+            <button id="export-docx" class="export-button">Export DOCX</button>
+            <label class="view-toggle">
+              <input type="checkbox" id="redline-toggle" class="toggle-checkbox" />
+              <span class="toggle-text">Redlined View</span>
+            </label>
+          </div>
+        </header>
+
+        <div class="progress-container" id="progress" style="display: none;">
+          <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <div class="progress-text" id="progress-text">Processing...</div>
+        </div>
+
+        <div class="comparison-panes" id="comparison" style="display: none;">
+          <div class="pane pane-original">
+            <div class="pane-header">Original</div>
+            <div class="pane-content" id="pane-original-content"></div>
+          </div>
+          <div class="pane-divider"></div>
+          <div class="pane pane-current">
+            <div class="pane-header">Current</div>
+            <div class="pane-content" id="pane-current-content"></div>
+          </div>
+          <div class="pane pane-redlined" style="display: none;">
+            <div class="pane-header">Redlined Document</div>
+            <div class="pane-content" id="pane-redlined-content"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

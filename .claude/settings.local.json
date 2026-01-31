@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(dir:*)",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(npm create:*)",
+      "Bash(npm install)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(timeout 3 cmd /c \"type C:\\\\Users\\\\vithoma\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\F--repos-docRedliner\\\\tasks\\\\b0c2799.output\")",
+      "WebFetch(domain:github.com)",
+      "Bash(curl:*)",
+      "Bash(timeout 2 cmd:*)",
+      "Bash(timeout:*)",
+      "Bash(npm install:*)",
+      "Bash(npm test)",
+      "Bash(del srcparsersparsing.worker.ts)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npm test:*)",
+      "Bash(start test-documents/comparison-output.html)",
+      "Bash(npx vite)",
+      "Bash(npx vite:*)",
+      "Bash(cmd /c \"npx vite\")",
+      "Bash(node:*)",
+      "Bash(npm:*)",
+      "mcp__asa__report_progress",
+      "mcp__asa__build_and_validate",
+      "Bash(npx tsc --noEmit)",
+      "WebFetch(domain:c-rex.net)"
+    ]
+  }
+}
