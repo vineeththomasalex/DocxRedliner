@@ -206,31 +206,23 @@ export class DocxInPlaceExporter {
       return;
     }
 
-    // Wrap all runs in a single w:ins element
+    // Apply green underline formatting to all runs (no w:ins to avoid Word overriding colors)
     const firstRun = runs[0];
-    const insElement = this.createInsElement();
 
     // Insert comment range start before first run
     const commentStart = this.createCommentRangeStart(commentId);
     firstRun.parentNode?.insertBefore(commentStart, firstRun);
 
-    // Move all runs into the ins element
+    // Apply insertion formatting to each run directly
     for (const run of runs) {
-      // Apply insertion formatting to the run
       this.applyInsertionFormatting(run);
-      insElement.appendChild(run.cloneNode(true));
     }
 
-    // Replace original runs with the ins element
-    firstRun.parentNode?.insertBefore(insElement, firstRun);
-    for (const run of runs) {
-      run.parentNode?.removeChild(run);
-    }
-
-    // Add comment range end and reference after the ins element
+    // Add comment range end and reference after the last run
+    const lastRun = runs[runs.length - 1];
     const commentEnd = this.createCommentRangeEnd(commentId);
     const commentRef = this.createCommentReference(commentId);
-    insElement.parentNode?.insertBefore(commentEnd, insElement.nextSibling);
+    lastRun.parentNode?.insertBefore(commentEnd, lastRun.nextSibling);
     commentEnd.parentNode?.insertBefore(commentRef, commentEnd.nextSibling);
   }
 
@@ -291,15 +283,14 @@ export class DocxInPlaceExporter {
     // Build new content based on word diff
     for (const change of blockDiff.wordDiff) {
       if (change.added) {
-        // Insertion
+        // Insertion - use visual formatting only (no w:ins to avoid Word overriding colors)
         const commentId = this.addComment(`Added: "${change.value.trim()}"`);
 
         para.appendChild(this.createCommentRangeStart(commentId));
 
-        const insElement = this.createInsElement();
+        // Create run with green underline formatting (no track change wrapper)
         const run = this.createRunWithText(change.value, false, true);
-        insElement.appendChild(run);
-        para.appendChild(insElement);
+        para.appendChild(run);
 
         para.appendChild(this.createCommentRangeEnd(commentId));
         para.appendChild(this.createCommentReference(commentId));
@@ -324,14 +315,6 @@ export class DocxInPlaceExporter {
         para.appendChild(run);
       }
     }
-  }
-
-  private createInsElement(): Element {
-    const ins = this.documentXml!.createElementNS(NS.w, 'w:ins');
-    ins.setAttribute('w:id', String(this.nextRevisionId++));
-    ins.setAttribute('w:author', this.author);
-    ins.setAttribute('w:date', this.date);
-    return ins;
   }
 
   private createDelElement(): Element {
