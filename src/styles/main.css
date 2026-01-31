@@ -157,6 +157,28 @@ body {
   border-color: #2c974b;
 }
 
+.export-button.exporting {
+  opacity: 0.7;
+  cursor: wait;
+  pointer-events: none;
+}
+
+.export-button .spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .change-counter {
   font-size: 14px;
   color: #57606a;

@@ -179,17 +179,28 @@ class DocRedlinerApp {
     }
   }
 
-  private exportHtml() {
+  private async exportHtml() {
+    const exportButton = document.getElementById('export-html');
     const leftPane = document.getElementById('pane-original-content');
     const rightPane = document.getElementById('pane-current-content');
 
-    if (leftPane && rightPane) {
+    if (!leftPane || !rightPane) return;
+
+    // Show loading state
+    this.setButtonLoading(exportButton, true, 'Exporting...');
+
+    try {
+      // Small delay to allow UI to update
+      await new Promise(resolve => setTimeout(resolve, 10));
+
       this.exporter.export(
         leftPane.innerHTML,
         rightPane.innerHTML,
         this.originalFileName,
         this.currentFileName
       );
+    } finally {
+      this.setButtonLoading(exportButton, false, 'Export HTML');
     }
   }
 
@@ -201,16 +212,24 @@ class DocRedlinerApp {
   }
 
   private async exportDocx() {
-    try {
-      if (!this.currentDiff) {
-        alert('Please compare documents first before exporting.');
-        return;
-      }
+    const exportButton = document.getElementById('export-docx');
 
-      if (!this.currentFileBuffer) {
-        alert('Current file buffer not available. Please try comparing documents again.');
-        return;
-      }
+    if (!this.currentDiff) {
+      alert('Please compare documents first before exporting.');
+      return;
+    }
+
+    if (!this.currentFileBuffer) {
+      alert('Current file buffer not available. Please try comparing documents again.');
+      return;
+    }
+
+    // Show loading state
+    this.setButtonLoading(exportButton, true, 'Exporting...');
+
+    try {
+      // Small delay to allow UI to update
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       // Use in-place exporter to preserve original formatting
       await this.docxInPlaceExporter.export(
@@ -221,6 +240,20 @@ class DocRedlinerApp {
     } catch (error) {
       console.error('DOCX export failed:', error);
       alert('Failed to export DOCX. Please try again.');
+    } finally {
+      this.setButtonLoading(exportButton, false, 'Export DOCX');
+    }
+  }
+
+  private setButtonLoading(button: HTMLElement | null, loading: boolean, text: string) {
+    if (!button) return;
+
+    if (loading) {
+      button.classList.add('exporting');
+      button.innerHTML = `<span class="spinner"></span>${text}`;
+    } else {
+      button.classList.remove('exporting');
+      button.textContent = text;
     }
   }
 
