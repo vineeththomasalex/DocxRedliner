@@ -10,7 +10,6 @@ import { DiffRenderer } from './renderer/diff-renderer';
 import { ScrollSynchronizer } from './renderer/scroll-sync';
 import { ChangeNavigator } from './renderer/change-navigator';
 import { HtmlExporter } from './ui/html-export';
-import { DocxExporter } from './ui/docx-export';
 import { DocxInPlaceExporter } from './ui/docx-export-inplace';
 import type { DocumentAST } from './types/ast.types';
 import type { DocumentDiff } from './types/diff.types';
@@ -23,7 +22,6 @@ class DocRedlinerApp {
   private scrollSync: ScrollSynchronizer | null = null;
   private navigator: ChangeNavigator | null = null;
   private exporter: HtmlExporter;
-  private docxExporter: DocxExporter;
   private docxInPlaceExporter: DocxInPlaceExporter;
   private originalFileName: string = '';
   private currentFileName: string = '';
@@ -46,7 +44,6 @@ class DocRedlinerApp {
     this.parser = new DocxParser();
     this.diffEngine = new DiffEngine();
     this.exporter = new HtmlExporter();
-    this.docxExporter = new DocxExporter();
     this.docxInPlaceExporter = new DocxInPlaceExporter();
 
     this.fileUpload.onFilesReady((original, current) => {

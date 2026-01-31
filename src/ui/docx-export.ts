@@ -9,8 +9,7 @@ import {
   PageBreak,
   CommentRangeStart,
   CommentRangeEnd,
-  Packer,
-  convertMillimetersToTwip
+  Packer
 } from 'docx';
 import type { DocumentDiff, BlockDiff } from '../types/diff.types';
 import type { Block, TextFormatting, SectionProperties } from '../types/ast.types';

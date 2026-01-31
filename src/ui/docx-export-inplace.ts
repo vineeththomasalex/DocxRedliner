@@ -279,9 +279,6 @@ export class DocxInPlaceExporter {
       return;
     }
 
-    // Get all runs from the paragraph
-    const runs = Array.from(para.getElementsByTagName('w:r'));
-
     // Clear the paragraph content (keeping properties)
     const pPr = para.getElementsByTagName('w:pPr')[0];
     while (para.firstChild) {
