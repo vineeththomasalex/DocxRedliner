@@ -340,14 +340,10 @@ export class DocxInPlaceExporter {
       const strike = this.documentXml!.createElementNS(NS.w, 'w:strike');
       rPr.appendChild(strike);
     } else if (isInserted) {
-      // Green color and underline for insertions
-      const color = this.documentXml!.createElementNS(NS.w, 'w:color');
-      color.setAttribute('w:val', '00A651');
-      rPr.appendChild(color);
-
-      const underline = this.documentXml!.createElementNS(NS.w, 'w:u');
-      underline.setAttribute('w:val', 'single');
-      rPr.appendChild(underline);
+      // Yellow highlight for insertions (keeps normal text color)
+      const highlight = this.documentXml!.createElementNS(NS.w, 'w:highlight');
+      highlight.setAttribute('w:val', 'yellow');
+      rPr.appendChild(highlight);
     }
 
     run.appendChild(rPr);
@@ -370,21 +366,13 @@ export class DocxInPlaceExporter {
       run.insertBefore(rPr, run.firstChild);
     }
 
-    // Add green color
-    let color = rPr.getElementsByTagName('w:color')[0];
-    if (!color) {
-      color = this.documentXml!.createElementNS(NS.w, 'w:color');
-      rPr.appendChild(color);
+    // Add yellow highlight (keeps normal text color)
+    let highlight = rPr.getElementsByTagName('w:highlight')[0];
+    if (!highlight) {
+      highlight = this.documentXml!.createElementNS(NS.w, 'w:highlight');
+      rPr.appendChild(highlight);
     }
-    color.setAttribute('w:val', '00A651');
-
-    // Add underline
-    let underline = rPr.getElementsByTagName('w:u')[0];
-    if (!underline) {
-      underline = this.documentXml!.createElementNS(NS.w, 'w:u');
-      rPr.appendChild(underline);
-    }
-    underline.setAttribute('w:val', 'single');
+    highlight.setAttribute('w:val', 'yellow');
   }
 
   private createCommentRangeStart(commentId: number): Element {
