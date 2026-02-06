@@ -3,15 +3,42 @@
 import { diffWords, type Change } from 'diff';
 import type { DocumentAST, Block, TextFormatting } from '../types/ast.types';
 import type { BlockDiff, DiffChange, DocumentDiff } from '../types/diff.types';
+import type { AlignmentDecision } from '../types/debug.types';
+
+export interface DiffResult {
+  diff: DocumentDiff;
+  alignmentDecisions?: AlignmentDecision[];
+}
 
 export class DiffEngine {
+  private debugMode: boolean = false;
+
   constructor() {
     // Constructor no longer needs to initialize diff-match-patch
   }
 
+  /**
+   * Enable or disable debug mode
+   */
+  setDebugMode(enabled: boolean): void {
+    this.debugMode = enabled;
+  }
+
+  /**
+   * Check if debug mode is enabled
+   */
+  isDebugMode(): boolean {
+    return this.debugMode;
+  }
+
   diffDocuments(originalAST: DocumentAST, currentAST: DocumentAST): DocumentDiff {
+    const result = this.diffDocumentsWithDebug(originalAST, currentAST);
+    return result.diff;
+  }
+
+  diffDocumentsWithDebug(originalAST: DocumentAST, currentAST: DocumentAST): DiffResult {
     // Step 1: Align blocks using diff-match-patch
-    const alignment = this.alignBlocks(originalAST.blocks, currentAST.blocks);
+    const { alignment, decisions } = this.alignBlocks(originalAST.blocks, currentAST.blocks);
 
     // Step 2: Create block diffs
     const blockDiffs: BlockDiff[] = [];
@@ -61,20 +88,30 @@ export class DiffEngine {
       }
     });
 
-    return {
+    const diff: DocumentDiff = {
       blockDiffs,
       totalChanges: changeId,
       // Use current document's section properties for the output
       sectionProperties: currentAST.sectionProperties
     };
+
+    return {
+      diff,
+      alignmentDecisions: this.debugMode ? decisions : undefined
+    };
   }
 
-  private alignBlocks(originalBlocks: Block[], currentBlocks: Block[]): [Block | null, Block | null][] {
+  private alignBlocks(originalBlocks: Block[], currentBlocks: Block[]): {
+    alignment: [Block | null, Block | null][];
+    decisions: AlignmentDecision[];
+  } {
     const alignment: [Block | null, Block | null][] = [];
+    const decisions: AlignmentDecision[] = [];
 
     // Hash-based block matching with whitespace normalization
     const normalizeText = (text: string) => text.trim().replace(/\s+/g, ' ');
     const hashBlock = (block: Block) => normalizeText(block.text);
+    const textPreview = (text: string) => text.substring(0, 100);
 
     // Helper to calculate similarity between two blocks (0-1 scale)
     const calculateSimilarity = (block1: Block, block2: Block): number => {
@@ -124,6 +161,19 @@ export class DiffEngine {
           alignment.push([origBlock, matches[i]]);
           usedCurrent.add(currIndex);
           matched = true;
+
+          // Record exact match decision
+          if (this.debugMode) {
+            decisions.push({
+              originalIndex: origIndex,
+              currentIndex: currIndex,
+              matchType: 'exact',
+              similarityScore: 1.0,
+              reason: 'Exact text match after whitespace normalization',
+              originalPreview: textPreview(origBlock.text),
+              currentPreview: textPreview(matches[i].text)
+            });
+          }
           break;
         }
       }
@@ -135,7 +185,7 @@ export class DiffEngine {
 
     // Second pass: Fuzzy matching for unmatched blocks (likely modifications)
     const SIMILARITY_THRESHOLD = 0.5; // 50% word overlap
-    unmatchedOriginal.forEach(({ block: origBlock, index: _origIndex }) => {
+    unmatchedOriginal.forEach(({ block: origBlock, index: origIndex }) => {
       type BestMatchType = { block: Block, index: number, similarity: number };
       let bestMatch: BestMatchType | null = null;
 
@@ -155,9 +205,50 @@ export class DiffEngine {
         const match: BestMatchType = bestMatch;
         alignment.push([origBlock, match.block]);
         usedCurrent.add(match.index);
+
+        // Record fuzzy match decision
+        if (this.debugMode) {
+          decisions.push({
+            originalIndex: origIndex,
+            currentIndex: match.index,
+            matchType: 'fuzzy',
+            similarityScore: match.similarity,
+            reason: `Fuzzy match: ${(match.similarity * 100).toFixed(1)}% word overlap (threshold: ${SIMILARITY_THRESHOLD * 100}%)`,
+            originalPreview: textPreview(origBlock.text),
+            currentPreview: textPreview(match.block.text)
+          });
+        }
       } else {
         // No similar block found - treat as deletion
         alignment.push([origBlock, null]);
+
+        // Record delete decision
+        if (this.debugMode) {
+          // Find the best similarity score for debugging
+          let bestSimilarity = 0;
+          let bestCandidateIndex: number | null = null;
+          currentBlocks.forEach((currBlock, currIndex) => {
+            if (usedCurrent.has(currIndex)) return;
+            const similarity = calculateSimilarity(origBlock, currBlock);
+            if (similarity > bestSimilarity) {
+              bestSimilarity = similarity;
+              bestCandidateIndex = currIndex;
+            }
+          });
+
+          const reason = bestCandidateIndex !== null
+            ? `No match found. Best candidate had ${(bestSimilarity * 100).toFixed(1)}% similarity (below ${SIMILARITY_THRESHOLD * 100}% threshold)`
+            : 'No match found. No unmatched candidates remaining';
+
+          decisions.push({
+            originalIndex: origIndex,
+            currentIndex: null,
+            matchType: 'delete',
+            similarityScore: bestSimilarity > 0 ? bestSimilarity : undefined,
+            reason,
+            originalPreview: textPreview(origBlock.text)
+          });
+        }
       }
     });
 
@@ -165,6 +256,17 @@ export class DiffEngine {
     currentBlocks.forEach((currBlock, index) => {
       if (!usedCurrent.has(index)) {
         alignment.push([null, currBlock]);
+
+        // Record insert decision
+        if (this.debugMode) {
+          decisions.push({
+            originalIndex: null,
+            currentIndex: index,
+            matchType: 'insert',
+            reason: 'No matching block in original document',
+            currentPreview: textPreview(currBlock.text)
+          });
+        }
       }
     });
 
@@ -181,7 +283,7 @@ export class DiffEngine {
       return aCurrIndex - bCurrIndex;
     });
 
-    return alignment;
+    return { alignment, decisions };
   }
 
   private diffFormatting(origBlock: Block, currBlock: Block, wordDiff: Change[]): DiffChange[] {

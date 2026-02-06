@@ -50,12 +50,8 @@
             <button id="prev-change" class="nav-button">← Previous</button>
             <span id="change-counter" class="change-counter">0 changes</span>
             <button id="next-change" class="nav-button">Next →</button>
-            <button id="export-html" class="export-button">Export HTML</button>
             <button id="export-docx" class="export-button">Export DOCX</button>
-            <label class="view-toggle">
-              <input type="checkbox" id="redline-toggle" class="toggle-checkbox" />
-              <span class="toggle-text">Redlined View</span>
-            </label>
+            <button id="export-debug" class="export-button" style="display: none;">Export Debug Report</button>
           </div>
         </header>
 
@@ -67,16 +63,7 @@
         </div>
 
         <div class="comparison-panes" id="comparison" style="display: none;">
-          <div class="pane pane-original">
-            <div class="pane-header">Original</div>
-            <div class="pane-content" id="pane-original-content"></div>
-          </div>
-          <div class="pane-divider"></div>
-          <div class="pane pane-current">
-            <div class="pane-header">Current</div>
-            <div class="pane-content" id="pane-current-content"></div>
-          </div>
-          <div class="pane pane-redlined" style="display: none;">
+          <div class="pane pane-redlined">
             <div class="pane-header">Redlined Document</div>
             <div class="pane-content" id="pane-redlined-content"></div>
           </div>

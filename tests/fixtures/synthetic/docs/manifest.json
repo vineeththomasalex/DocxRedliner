@@ -1,0 +1,131 @@
+{
+  "generated": "2026-02-05T21:35:51.346Z",
+  "scenarios": [
+    {
+      "name": "01-word-insertion",
+      "description": "Tests word-level diff for insertions",
+      "original": "01-word-insertion_original.docx",
+      "modified": "01-word-insertion_modified.docx"
+    },
+    {
+      "name": "02-word-deletion",
+      "description": "Tests word-level diff for deletions",
+      "original": "02-word-deletion_original.docx",
+      "modified": "02-word-deletion_modified.docx"
+    },
+    {
+      "name": "03-paragraph-added",
+      "description": "Tests block insertion detection",
+      "original": "03-paragraph-added_original.docx",
+      "modified": "03-paragraph-added_modified.docx"
+    },
+    {
+      "name": "04-paragraph-removed",
+      "description": "Tests block deletion detection",
+      "original": "04-paragraph-removed_original.docx",
+      "modified": "04-paragraph-removed_modified.docx"
+    },
+    {
+      "name": "05-bold-added",
+      "description": "Tests formatting detection - bold",
+      "original": "05-bold-added_original.docx",
+      "modified": "05-bold-added_modified.docx"
+    },
+    {
+      "name": "06-italic-added",
+      "description": "Tests formatting detection - italic",
+      "original": "06-italic-added_original.docx",
+      "modified": "06-italic-added_modified.docx"
+    },
+    {
+      "name": "07-color-changed",
+      "description": "Tests formatting detection - color",
+      "original": "07-color-changed_original.docx",
+      "modified": "07-color-changed_modified.docx"
+    },
+    {
+      "name": "08-identical",
+      "description": "Tests zero changes baseline",
+      "original": "08-identical_original.docx",
+      "modified": "08-identical_modified.docx"
+    },
+    {
+      "name": "09-empty-to-content",
+      "description": "Tests edge case - empty document to content",
+      "original": "09-empty-to-content_original.docx",
+      "modified": "09-empty-to-content_modified.docx"
+    },
+    {
+      "name": "10-unicode",
+      "description": "Tests character handling with CJK, Arabic, and emoji",
+      "original": "10-unicode_original.docx",
+      "modified": "10-unicode_modified.docx"
+    },
+    {
+      "name": "11-multiple-changes",
+      "description": "Tests multiple types of changes in one document",
+      "original": "11-multiple-changes_original.docx",
+      "modified": "11-multiple-changes_modified.docx"
+    },
+    {
+      "name": "12-underline-added",
+      "description": "Tests formatting detection - underline",
+      "original": "12-underline-added_original.docx",
+      "modified": "12-underline-added_modified.docx"
+    },
+    {
+      "name": "13-font-changed",
+      "description": "Tests formatting detection - font family",
+      "original": "13-font-changed_original.docx",
+      "modified": "13-font-changed_modified.docx"
+    },
+    {
+      "name": "14-font-size-changed",
+      "description": "Tests formatting detection - font size",
+      "original": "14-font-size-changed_original.docx",
+      "modified": "14-font-size-changed_modified.docx"
+    },
+    {
+      "name": "15-word-replacement",
+      "description": "Tests word-level diff for replacements",
+      "original": "15-word-replacement_original.docx",
+      "modified": "15-word-replacement_modified.docx"
+    },
+    {
+      "name": "16-heading-changes",
+      "description": "Tests heading text and level changes",
+      "original": "16-heading-changes_original.docx",
+      "modified": "16-heading-changes_modified.docx"
+    },
+    {
+      "name": "17-long-paragraphs",
+      "description": "Tests diff with long paragraph content",
+      "original": "17-long-paragraphs_original.docx",
+      "modified": "17-long-paragraphs_modified.docx"
+    },
+    {
+      "name": "18-special-characters",
+      "description": "Tests handling of special characters",
+      "original": "18-special-characters_original.docx",
+      "modified": "18-special-characters_modified.docx"
+    },
+    {
+      "name": "19-whitespace",
+      "description": "Tests handling of whitespace changes",
+      "original": "19-whitespace_original.docx",
+      "modified": "19-whitespace_modified.docx"
+    },
+    {
+      "name": "20-with-page-break",
+      "description": "Tests document with page breaks",
+      "original": "20-with-page-break_original.docx",
+      "modified": "20-with-page-break_modified.docx"
+    },
+    {
+      "name": "21-large-document",
+      "description": "Performance test with 50 paragraphs",
+      "original": "21-large-document_original.docx",
+      "modified": "21-large-document_modified.docx"
+    }
+  ]
+}

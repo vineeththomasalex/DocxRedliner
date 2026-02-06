@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFile } from 'fs/promises';
 import { parseOffice } from 'officeparser';
-import { DiffEngine } from '../src/diff/diff-engine';
-import type { DocumentAST, Block, TextRun, TextFormatting } from '../src/types/ast.types';
+import { DiffEngine } from '../../src/diff/diff-engine';
+import type { DocumentAST, Block, TextRun, TextFormatting } from '../../src/types/ast.types';
 
 // Helper function to normalize officeparser output to our AST format
 function normalizeToAST(result: any): DocumentAST {

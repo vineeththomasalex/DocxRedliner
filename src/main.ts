@@ -5,46 +5,53 @@ import './styles/diff-highlights.css';
 
 import { FileUploadHandler } from './ui/file-upload';
 import { DocxParser } from './parsers/docx-parser';
-import { DiffEngine } from './diff/diff-engine';
+import { DiffEngine, type DiffResult } from './diff/diff-engine';
 import { DiffRenderer } from './renderer/diff-renderer';
-import { ScrollSynchronizer } from './renderer/scroll-sync';
 import { ChangeNavigator } from './renderer/change-navigator';
-import { HtmlExporter } from './ui/html-export';
 import { DocxInPlaceExporter } from './ui/docx-export-inplace';
+import { DebugExporter } from './ui/debug-export';
 import type { DocumentAST } from './types/ast.types';
 import type { DocumentDiff } from './types/diff.types';
+import type { AlignmentDecision } from './types/debug.types';
 
 class DocRedlinerApp {
   private fileUpload: FileUploadHandler;
   private parser: DocxParser;
   private diffEngine: DiffEngine;
   private renderer: DiffRenderer | null = null;
-  private scrollSync: ScrollSynchronizer | null = null;
   private navigator: ChangeNavigator | null = null;
-  private exporter: HtmlExporter;
   private docxInPlaceExporter: DocxInPlaceExporter;
+  private debugExporter: DebugExporter;
   private originalFileName: string = '';
   private currentFileName: string = '';
 
+  // Debug mode flag
+  private debugMode: boolean = false;
+
   // Store data for DOCX export
   private currentDiff: DocumentDiff | null = null;
-  // @ts-ignore - Stored for future use
   private originalAST: DocumentAST | null = null;
-  // @ts-ignore - Stored for future use
   private currentAST: DocumentAST | null = null;
+
+  // Store alignment decisions for debug export
+  private alignmentDecisions: AlignmentDecision[] = [];
 
   // Store raw file buffer for in-place DOCX export
   private currentFileBuffer: ArrayBuffer | null = null;
-
-  // Track current view mode
-  private currentViewMode: 'side-by-side' | 'redlined' = 'side-by-side';
 
   constructor() {
     this.fileUpload = new FileUploadHandler();
     this.parser = new DocxParser();
     this.diffEngine = new DiffEngine();
-    this.exporter = new HtmlExporter();
     this.docxInPlaceExporter = new DocxInPlaceExporter();
+    this.debugExporter = new DebugExporter();
+
+    // Check for debug mode from URL param
+    this.debugMode = this.checkDebugMode();
+    this.diffEngine.setDebugMode(this.debugMode);
+
+    // Show/hide debug button based on mode
+    this.updateDebugButtonVisibility();
 
     this.fileUpload.onFilesReady((original, current) => {
       this.originalFileName = original.name;
@@ -52,9 +59,26 @@ class DocRedlinerApp {
       this.compareDocuments(original, current);
     });
 
-    this.setupExportButton();
     this.setupDocxExportButton();
-    this.setupViewToggle();
+    this.setupDebugExportButton();
+  }
+
+  /**
+   * Check if debug mode is enabled via URL param
+   */
+  private checkDebugMode(): boolean {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('debug') === 'true';
+  }
+
+  /**
+   * Show or hide the debug export button based on debug mode
+   */
+  private updateDebugButtonVisibility(): void {
+    const debugButton = document.getElementById('export-debug');
+    if (debugButton) {
+      debugButton.style.display = this.debugMode ? 'inline-block' : 'none';
+    }
   }
 
   private async compareDocuments(originalFile: File, currentFile: File) {
@@ -73,18 +97,19 @@ class DocRedlinerApp {
 
       this.updateProgress(50, 'Comparing documents...');
 
-      // Diff the documents
-      const diff = this.diffEngine.diffDocuments(originalAST, currentAST);
+      // Diff the documents (with debug info if debug mode is enabled)
+      const result: DiffResult = this.diffEngine.diffDocumentsWithDebug(originalAST, currentAST);
 
       // Store for export
-      this.currentDiff = diff;
+      this.currentDiff = result.diff;
       this.originalAST = originalAST;
       this.currentAST = currentAST;
+      this.alignmentDecisions = result.alignmentDecisions || [];
 
       this.updateProgress(75, 'Rendering comparison...');
 
       // Render the diff
-      this.renderComparison(diff);
+      this.renderComparison(result.diff);
 
       this.updateProgress(100, 'Complete!');
 
@@ -101,23 +126,14 @@ class DocRedlinerApp {
     }
   }
 
-  private renderComparison(diff: any) {
+  private renderComparison(diff: DocumentDiff) {
     // Initialize renderer if not already
     if (!this.renderer) {
-      this.renderer = new DiffRenderer('pane-original-content', 'pane-current-content');
+      this.renderer = new DiffRenderer('pane-redlined-content');
     }
 
-    // Render based on current view mode
-    if (this.currentViewMode === 'redlined') {
-      this.renderer.renderRedlined(diff);
-    } else {
-      this.renderer.render(diff);
-    }
-
-    // Setup synchronized scrolling
-    if (!this.scrollSync) {
-      this.scrollSync = new ScrollSynchronizer('pane-original-content', 'pane-current-content');
-    }
+    // Render redlined view
+    this.renderer.renderRedlined(diff);
 
     // Setup change navigation
     const changeElements = this.renderer.getChangeElements();
@@ -172,42 +188,17 @@ class DocRedlinerApp {
     }
   }
 
-  private setupExportButton() {
-    const exportButton = document.getElementById('export-html');
-    if (exportButton) {
-      exportButton.addEventListener('click', () => this.exportHtml());
-    }
-  }
-
-  private async exportHtml() {
-    const exportButton = document.getElementById('export-html');
-    const leftPane = document.getElementById('pane-original-content');
-    const rightPane = document.getElementById('pane-current-content');
-
-    if (!leftPane || !rightPane) return;
-
-    // Show loading state
-    this.setButtonLoading(exportButton, true, 'Exporting...');
-
-    try {
-      // Small delay to allow UI to update
-      await new Promise(resolve => setTimeout(resolve, 10));
-
-      this.exporter.export(
-        leftPane.innerHTML,
-        rightPane.innerHTML,
-        this.originalFileName,
-        this.currentFileName
-      );
-    } finally {
-      this.setButtonLoading(exportButton, false, 'Export HTML');
-    }
-  }
-
   private setupDocxExportButton() {
     const exportButton = document.getElementById('export-docx');
     if (exportButton) {
       exportButton.addEventListener('click', () => this.exportDocx());
+    }
+  }
+
+  private setupDebugExportButton() {
+    const debugButton = document.getElementById('export-debug');
+    if (debugButton) {
+      debugButton.addEventListener('click', () => this.exportDebugReport());
     }
   }
 
@@ -245,6 +236,24 @@ class DocRedlinerApp {
     }
   }
 
+  private exportDebugReport() {
+    if (!this.currentDiff || !this.originalAST || !this.currentAST) {
+      alert('Please compare documents first before exporting debug report.');
+      return;
+    }
+
+    const report = this.debugExporter.generateReport(
+      this.originalAST,
+      this.currentAST,
+      this.currentDiff,
+      this.alignmentDecisions,
+      this.originalFileName,
+      this.currentFileName
+    );
+
+    this.debugExporter.exportToFile(report);
+  }
+
   private setButtonLoading(button: HTMLElement | null, loading: boolean, text: string) {
     if (!button) return;
 
@@ -254,74 +263,6 @@ class DocRedlinerApp {
     } else {
       button.classList.remove('exporting');
       button.textContent = text;
-    }
-  }
-
-  private setupViewToggle() {
-    const toggle = document.getElementById('redline-toggle') as HTMLInputElement;
-    if (toggle) {
-      toggle.addEventListener('change', () => this.switchViewMode(toggle.checked));
-    }
-  }
-
-  private switchViewMode(useRedlined: boolean) {
-    this.currentViewMode = useRedlined ? 'redlined' : 'side-by-side';
-
-    // Re-render with current diff
-    if (this.currentDiff && this.renderer) {
-      if (useRedlined) {
-        this.showRedlinedView();
-        this.renderer.renderRedlined(this.currentDiff);
-      } else {
-        this.showSideBySideView();
-        this.renderer.render(this.currentDiff);
-      }
-
-      // Update navigator with new change elements
-      const changeElements = this.renderer.getChangeElements();
-      if (this.navigator) {
-        this.navigator.updateChangeElements(changeElements);
-      }
-    }
-  }
-
-  private showSideBySideView() {
-    const originalPane = document.getElementById('pane-original-content');
-    const currentPane = document.getElementById('pane-current-content');
-    const redlinedPane = document.getElementById('pane-redlined-content');
-    const divider = document.querySelector('.pane-divider') as HTMLElement;
-
-    if (originalPane?.parentElement) {
-      originalPane.parentElement.style.display = 'flex';
-    }
-    if (currentPane?.parentElement) {
-      currentPane.parentElement.style.display = 'flex';
-    }
-    if (divider) {
-      divider.style.display = 'block';
-    }
-    if (redlinedPane?.parentElement) {
-      redlinedPane.parentElement.style.display = 'none';
-    }
-  }
-
-  private showRedlinedView() {
-    const originalPane = document.getElementById('pane-original-content');
-    const currentPane = document.getElementById('pane-current-content');
-    const redlinedPane = document.getElementById('pane-redlined-content');
-    const divider = document.querySelector('.pane-divider') as HTMLElement;
-
-    if (originalPane?.parentElement) {
-      originalPane.parentElement.style.display = 'none';
-    }
-    if (currentPane?.parentElement) {
-      currentPane.parentElement.style.display = 'none';
-    }
-    if (divider) {
-      divider.style.display = 'none';
-    }
-    if (redlinedPane?.parentElement) {
-      redlinedPane.parentElement.style.display = 'flex';
     }
   }
 }
