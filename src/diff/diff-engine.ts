@@ -7,7 +7,7 @@ import type { AlignmentDecision } from '../types/debug.types';
 
 export interface DiffResult {
   diff: DocumentDiff;
-  alignmentDecisions?: AlignmentDecision[];
+  alignmentDecisions: AlignmentDecision[];
 }
 
 export class DiffEngine {
@@ -97,7 +97,7 @@ export class DiffEngine {
 
     return {
       diff,
-      alignmentDecisions: this.debugMode ? decisions : undefined
+      alignmentDecisions: decisions
     };
   }
 
@@ -163,17 +163,15 @@ export class DiffEngine {
           matched = true;
 
           // Record exact match decision
-          if (this.debugMode) {
-            decisions.push({
-              originalIndex: origIndex,
-              currentIndex: currIndex,
-              matchType: 'exact',
-              similarityScore: 1.0,
-              reason: 'Exact text match after whitespace normalization',
-              originalPreview: textPreview(origBlock.text),
-              currentPreview: textPreview(matches[i].text)
-            });
-          }
+          decisions.push({
+            originalIndex: origIndex,
+            currentIndex: currIndex,
+            matchType: 'exact',
+            similarityScore: 1.0,
+            reason: 'Exact text match after whitespace normalization',
+            originalPreview: textPreview(origBlock.text),
+            currentPreview: textPreview(matches[i].text)
+          });
           break;
         }
       }
@@ -207,48 +205,44 @@ export class DiffEngine {
         usedCurrent.add(match.index);
 
         // Record fuzzy match decision
-        if (this.debugMode) {
-          decisions.push({
-            originalIndex: origIndex,
-            currentIndex: match.index,
-            matchType: 'fuzzy',
-            similarityScore: match.similarity,
-            reason: `Fuzzy match: ${(match.similarity * 100).toFixed(1)}% word overlap (threshold: ${SIMILARITY_THRESHOLD * 100}%)`,
-            originalPreview: textPreview(origBlock.text),
-            currentPreview: textPreview(match.block.text)
-          });
-        }
+        decisions.push({
+          originalIndex: origIndex,
+          currentIndex: match.index,
+          matchType: 'fuzzy',
+          similarityScore: match.similarity,
+          reason: `Fuzzy match: ${(match.similarity * 100).toFixed(1)}% word overlap (threshold: ${SIMILARITY_THRESHOLD * 100}%)`,
+          originalPreview: textPreview(origBlock.text),
+          currentPreview: textPreview(match.block.text)
+        });
       } else {
         // No similar block found - treat as deletion
         alignment.push([origBlock, null]);
 
         // Record delete decision
-        if (this.debugMode) {
-          // Find the best similarity score for debugging
-          let bestSimilarity = 0;
-          let bestCandidateIndex: number | null = null;
-          currentBlocks.forEach((currBlock, currIndex) => {
-            if (usedCurrent.has(currIndex)) return;
-            const similarity = calculateSimilarity(origBlock, currBlock);
-            if (similarity > bestSimilarity) {
-              bestSimilarity = similarity;
-              bestCandidateIndex = currIndex;
-            }
-          });
+        // Find the best similarity score for debugging
+        let bestSimilarity = 0;
+        let bestCandidateIndex: number | null = null;
+        currentBlocks.forEach((currBlock, currIndex) => {
+          if (usedCurrent.has(currIndex)) return;
+          const similarity = calculateSimilarity(origBlock, currBlock);
+          if (similarity > bestSimilarity) {
+            bestSimilarity = similarity;
+            bestCandidateIndex = currIndex;
+          }
+        });
 
-          const reason = bestCandidateIndex !== null
-            ? `No match found. Best candidate had ${(bestSimilarity * 100).toFixed(1)}% similarity (below ${SIMILARITY_THRESHOLD * 100}% threshold)`
-            : 'No match found. No unmatched candidates remaining';
+        const reason = bestCandidateIndex !== null
+          ? `No match found. Best candidate had ${(bestSimilarity * 100).toFixed(1)}% similarity (below ${SIMILARITY_THRESHOLD * 100}% threshold)`
+          : 'No match found. No unmatched candidates remaining';
 
-          decisions.push({
-            originalIndex: origIndex,
-            currentIndex: null,
-            matchType: 'delete',
-            similarityScore: bestSimilarity > 0 ? bestSimilarity : undefined,
-            reason,
-            originalPreview: textPreview(origBlock.text)
-          });
-        }
+        decisions.push({
+          originalIndex: origIndex,
+          currentIndex: null,
+          matchType: 'delete',
+          similarityScore: bestSimilarity > 0 ? bestSimilarity : undefined,
+          reason,
+          originalPreview: textPreview(origBlock.text)
+        });
       }
     });
 
@@ -258,15 +252,13 @@ export class DiffEngine {
         alignment.push([null, currBlock]);
 
         // Record insert decision
-        if (this.debugMode) {
-          decisions.push({
-            originalIndex: null,
-            currentIndex: index,
-            matchType: 'insert',
-            reason: 'No matching block in original document',
-            currentPreview: textPreview(currBlock.text)
-          });
-        }
+        decisions.push({
+          originalIndex: null,
+          currentIndex: index,
+          matchType: 'insert',
+          reason: 'No matching block in original document',
+          currentPreview: textPreview(currBlock.text)
+        });
       }
     });
 

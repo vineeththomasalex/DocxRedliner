@@ -46,12 +46,9 @@ class DocRedlinerApp {
     this.docxInPlaceExporter = new DocxInPlaceExporter();
     this.debugExporter = new DebugExporter();
 
-    // Check for debug mode from URL param
+    // Check for debug mode from URL param (enables verbose logging)
     this.debugMode = this.checkDebugMode();
     this.diffEngine.setDebugMode(this.debugMode);
-
-    // Show/hide debug button based on mode
-    this.updateDebugButtonVisibility();
 
     this.fileUpload.onFilesReady((original, current) => {
       this.originalFileName = original.name;
@@ -69,16 +66,6 @@ class DocRedlinerApp {
   private checkDebugMode(): boolean {
     const urlParams = new URLSearchParams(window.location.search);
     return urlParams.get('debug') === 'true';
-  }
-
-  /**
-   * Show or hide the debug export button based on debug mode
-   */
-  private updateDebugButtonVisibility(): void {
-    const debugButton = document.getElementById('export-debug');
-    if (debugButton) {
-      debugButton.style.display = this.debugMode ? 'inline-block' : 'none';
-    }
   }
 
   private async compareDocuments(originalFile: File, currentFile: File) {
@@ -104,7 +91,7 @@ class DocRedlinerApp {
       this.currentDiff = result.diff;
       this.originalAST = originalAST;
       this.currentAST = currentAST;
-      this.alignmentDecisions = result.alignmentDecisions || [];
+      this.alignmentDecisions = result.alignmentDecisions;
 
       this.updateProgress(75, 'Rendering comparison...');
 

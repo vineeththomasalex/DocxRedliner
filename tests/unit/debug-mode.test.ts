@@ -33,7 +33,7 @@ describe('DiffEngine Debug Mode', () => {
     expect(result.alignmentDecisions!.length).toBeGreaterThan(0);
   });
 
-  it('should not return debug info when debug mode disabled', () => {
+  it('should always return alignment decisions regardless of debug mode', () => {
     diffEngine.setDebugMode(false);
 
     const doc1 = createSimpleDocument('Hello world');
@@ -41,7 +41,9 @@ describe('DiffEngine Debug Mode', () => {
 
     const result = diffEngine.diffDocumentsWithDebug(doc1, doc2);
 
-    expect(result.alignmentDecisions).toBeUndefined();
+    // Decisions are always returned for debug export functionality
+    expect(result.alignmentDecisions).toBeDefined();
+    expect(result.alignmentDecisions.length).toBeGreaterThan(0);
   });
 
   it('should include similarity scores for fuzzy matches', () => {

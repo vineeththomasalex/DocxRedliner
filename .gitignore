@@ -31,3 +31,9 @@ nul
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Test coverage
+coverage/
+
+# PDF test files
+test-documents/*.pdf
