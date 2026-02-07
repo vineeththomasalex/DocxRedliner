@@ -53,7 +53,199 @@ export class DocxParser {
     // Normalize the result to our AST format
     const ast = this.normalizeAST(result);
     ast.sectionProperties = sectionProperties;
+
+    // Extract numbered list content that officeparser misses (paragraphs with <w:numPr>)
+    const numberedListBlocks = await this.extractNumberedLists(buffer);
+
+    // Merge numbered list blocks with existing blocks
+    if (numberedListBlocks.length > 0) {
+      ast.blocks = this.mergeBlocks(ast.blocks, numberedListBlocks);
+    }
+
     return ast;
+  }
+
+  /**
+   * Extract content from paragraphs with Word native numbered lists (<w:numPr>).
+   * officeparser skips these, so we need to extract them directly from the DOCX XML.
+   */
+  private async extractNumberedLists(buffer: ArrayBuffer): Promise<{ block: Block; xmlIndex: number }[]> {
+    try {
+      const zip = await JSZip.loadAsync(buffer);
+      const documentXml = await zip.file('word/document.xml')?.async('string');
+
+      if (!documentXml) {
+        return [];
+      }
+
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(documentXml, 'application/xml');
+
+      const numberedBlocks: { block: Block; xmlIndex: number }[] = [];
+      const pElements = doc.getElementsByTagName('w:p');
+
+      for (let i = 0; i < pElements.length; i++) {
+        const p = pElements[i];
+        const numPr = p.getElementsByTagName('w:numPr');
+
+        if (numPr.length > 0) {
+          // This paragraph has native numbering - extract its content
+          const text = this.extractTextFromParagraph(p);
+
+          if (text.trim()) {
+            const formatting = this.extractFormattingFromParagraph(p);
+            const normalizedText = text.trim().replace(/\s+/g, ' ');
+
+            numberedBlocks.push({
+              block: {
+                id: this.generateBlockId(normalizedText, 1000 + i), // Use high index to avoid collisions
+                type: 'paragraph',
+                text: normalizedText,
+                runs: [{ text: normalizedText, formatting }],
+                formatting
+              },
+              xmlIndex: i
+            });
+          }
+        }
+      }
+
+      return numberedBlocks;
+    } catch (error) {
+      console.warn('Failed to extract numbered lists:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Extract text content from a <w:p> element by concatenating all <w:t> elements
+   */
+  private extractTextFromParagraph(p: Element): string {
+    const textElements = p.getElementsByTagName('w:t');
+    let text = '';
+    for (let i = 0; i < textElements.length; i++) {
+      text += textElements[i].textContent || '';
+    }
+    return text;
+  }
+
+  /**
+   * Extract formatting from a <w:p> element by examining <w:rPr> elements
+   */
+  private extractFormattingFromParagraph(p: Element): TextFormatting {
+    const formatting: TextFormatting = {};
+
+    // Check for bold
+    const boldElements = p.getElementsByTagName('w:b');
+    if (boldElements.length > 0) {
+      const val = boldElements[0].getAttribute('w:val');
+      // In DOCX, <w:b/> or <w:b w:val="true"/> means bold, <w:b w:val="false"/> means not bold
+      if (val === null || val === '' || val === 'true' || val === '1') {
+        formatting.bold = true;
+      }
+    }
+
+    // Check for italic
+    const italicElements = p.getElementsByTagName('w:i');
+    if (italicElements.length > 0) {
+      const val = italicElements[0].getAttribute('w:val');
+      if (val === null || val === '' || val === 'true' || val === '1') {
+        formatting.italic = true;
+      }
+    }
+
+    // Check for underline
+    const underlineElements = p.getElementsByTagName('w:u');
+    if (underlineElements.length > 0) {
+      const val = underlineElements[0].getAttribute('w:val');
+      if (val && val !== 'none') {
+        formatting.underline = true;
+      }
+    }
+
+    return formatting;
+  }
+
+  /**
+   * Merge numbered list blocks with existing blocks from officeparser.
+   * This inserts numbered list content at the correct positions based on XML order.
+   */
+  private mergeBlocks(existingBlocks: Block[], numberedBlocks: { block: Block; xmlIndex: number }[]): Block[] {
+    if (numberedBlocks.length === 0) {
+      return existingBlocks;
+    }
+
+    // If there are no existing blocks, just return the numbered blocks in order
+    if (existingBlocks.length === 0) {
+      return numberedBlocks.map(nb => nb.block);
+    }
+
+    // Create a set of existing block texts for deduplication
+    const existingTexts = new Set(existingBlocks.map(b => b.text.toLowerCase().trim()));
+
+    // Filter out numbered blocks that are already in the existing blocks (deduplication)
+    const newNumberedBlocks = numberedBlocks.filter(
+      nb => !existingTexts.has(nb.block.text.toLowerCase().trim())
+    );
+
+    if (newNumberedBlocks.length === 0) {
+      return existingBlocks;
+    }
+
+    // Sort numbered blocks by their XML index
+    newNumberedBlocks.sort((a, b) => a.xmlIndex - b.xmlIndex);
+
+    // Strategy: Insert numbered blocks based on their relative position
+    // We'll create position markers by finding nearby non-numbered content
+
+    // For now, use a simpler approach: interleave based on content position
+    // Since numbered blocks come from XML order and existing blocks preserve document order,
+    // we can merge them by creating a combined list
+
+    const result: Block[] = [];
+    let existingIdx = 0;
+    let numberedIdx = 0;
+
+    // Merge in order - numbered blocks typically appear between regular paragraphs
+    // We use a heuristic: insert numbered blocks before the existing block
+    // that comes after them in the XML (based on position)
+
+    while (existingIdx < existingBlocks.length || numberedIdx < newNumberedBlocks.length) {
+      // Add any numbered blocks that should come before the current existing block
+      while (numberedIdx < newNumberedBlocks.length) {
+        // If we've exhausted existing blocks, add remaining numbered blocks
+        if (existingIdx >= existingBlocks.length) {
+          result.push(newNumberedBlocks[numberedIdx].block);
+          numberedIdx++;
+          continue;
+        }
+
+        // For the simple case, interleave by adding numbered blocks
+        // then existing blocks alternately based on xmlIndex
+        const numberedXmlIndex = newNumberedBlocks[numberedIdx].xmlIndex;
+
+        // Heuristic: numbered blocks with lower xmlIndex come first
+        // Add the numbered block if its index suggests it comes before other content
+        if (numberedIdx === 0 || numberedXmlIndex < (existingIdx + numberedIdx) * 2) {
+          result.push(newNumberedBlocks[numberedIdx].block);
+          numberedIdx++;
+        } else {
+          break;
+        }
+      }
+
+      // Add the current existing block
+      if (existingIdx < existingBlocks.length) {
+        result.push(existingBlocks[existingIdx]);
+        existingIdx++;
+      }
+    }
+
+    // Regenerate IDs to ensure proper ordering
+    return result.map((block, index) => ({
+      ...block,
+      id: this.generateBlockId(block.text, index)
+    }));
   }
 
   private async extractSectionProperties(buffer: ArrayBuffer): Promise<SectionProperties> {
