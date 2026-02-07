@@ -3,7 +3,7 @@
 export class FileUploadHandler {
   private originalFile: File | null = null;
   private currentFile: File | null = null;
-  private onBothFilesReady: ((original: File, current: File) => void) | null = null;
+  private onFileChangeCallback: ((hasOriginal: boolean, hasCurrent: boolean) => void) | null = null;
 
   constructor() {
     this.initializeUploadHandlers();
@@ -67,13 +67,13 @@ export class FileUploadHandler {
   private handleOriginalFile(file: File) {
     this.originalFile = file;
     this.updateFileDisplay('original', file.name);
-    this.checkBothFilesReady();
+    this.notifyFileChange();
   }
 
   private handleCurrentFile(file: File) {
     this.currentFile = file;
     this.updateFileDisplay('current', file.name);
-    this.checkBothFilesReady();
+    this.notifyFileChange();
   }
 
   private updateFileDisplay(type: 'original' | 'current', fileName: string) {
@@ -89,14 +89,45 @@ export class FileUploadHandler {
     }
   }
 
-  private checkBothFilesReady() {
-    if (this.originalFile && this.currentFile && this.onBothFilesReady) {
-      this.onBothFilesReady(this.originalFile, this.currentFile);
+  private notifyFileChange() {
+    if (this.onFileChangeCallback) {
+      this.onFileChangeCallback(!!this.originalFile, !!this.currentFile);
     }
   }
 
-  public onFilesReady(callback: (original: File, current: File) => void) {
-    this.onBothFilesReady = callback;
+  /**
+   * Register callback for when file selection changes
+   */
+  public onFileChange(callback: (hasOriginal: boolean, hasCurrent: boolean) => void) {
+    this.onFileChangeCallback = callback;
+  }
+
+  /**
+   * Check if both files are ready for comparison
+   */
+  public areBothFilesReady(): boolean {
+    return !!this.originalFile && !!this.currentFile;
+  }
+
+  /**
+   * Get the selected files for comparison
+   */
+  public getFiles(): { original: File; current: File } | null {
+    if (!this.originalFile || !this.currentFile) {
+      return null;
+    }
+    return {
+      original: this.originalFile,
+      current: this.currentFile
+    };
+  }
+
+  /**
+   * @deprecated Use onFileChange() and getFiles() instead
+   */
+  public onFilesReady(_callback: (original: File, current: File) => void) {
+    // Keep for backward compatibility but don't auto-trigger
+    console.warn('onFilesReady is deprecated. Use onFileChange() and getFiles() instead.');
   }
 
   public reset() {
@@ -116,5 +147,7 @@ export class FileUploadHandler {
       if (nameElement) nameElement.textContent = '';
       if (label) label.classList.remove('has-file');
     });
+
+    this.notifyFileChange();
   }
 }

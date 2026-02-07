@@ -21,10 +21,14 @@ export interface TextRun {
 
 export interface Block {
   id: string;
-  type: 'paragraph' | 'heading1' | 'heading2' | 'heading3' | 'table' | 'page-break';
+  type: 'paragraph' | 'heading1' | 'heading2' | 'heading3' | 'table' | 'table-row' | 'page-break';
   text: string;
   runs: TextRun[];
   formatting: TextFormatting;
+  /** For table-row blocks, links rows belonging to the same table */
+  tableId?: string;
+  /** For table-row blocks, the row index within the table (0-based) */
+  rowIndex?: number;
 }
 
 export interface DocumentAST {

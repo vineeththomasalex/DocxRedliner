@@ -2,7 +2,7 @@
 // Synthetic Test Document Generator
 // Generates controlled test document pairs for automated testing
 
-import { Document, Paragraph, TextRun, HeadingLevel, Packer, PageBreak, LevelFormat, AlignmentType } from 'docx';
+import { Document, Paragraph, TextRun, HeadingLevel, Packer, PageBreak, LevelFormat, AlignmentType, Table, TableRow, TableCell, WidthType } from 'docx';
 import { writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -48,6 +48,87 @@ function createDocument(paragraphs: Paragraph[]): Document {
     sections: [{
       properties: {},
       children: paragraphs
+    }]
+  });
+}
+
+// ============= Table Helper Functions =============
+
+interface TableCellData {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+}
+
+/**
+ * Create a table cell with optional formatting
+ */
+function createTableCell(data: TableCellData): TableCell {
+  return new TableCell({
+    children: [
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: data.text,
+            bold: data.bold,
+            italics: data.italic
+          })
+        ]
+      })
+    ]
+  });
+}
+
+/**
+ * Create a table row from cell data array
+ */
+function createTableRow(cells: TableCellData[]): TableRow {
+  return new TableRow({
+    children: cells.map(cell => createTableCell(cell))
+  });
+}
+
+/**
+ * Create a table from row data
+ */
+function createTableFromRows(rows: TableCellData[][]): Table {
+  return new Table({
+    rows: rows.map(row => createTableRow(row)),
+    width: {
+      size: 9000,
+      type: WidthType.DXA
+    }
+  });
+}
+
+/**
+ * Create a document containing a table
+ */
+function createTableDocument(rows: TableCellData[][]): Document {
+  return new Document({
+    sections: [{
+      properties: {},
+      children: [createTableFromRows(rows)]
+    }]
+  });
+}
+
+/**
+ * Create a document with mixed content: intro paragraph, table, and conclusion paragraph
+ */
+function createMixedDocumentWithTable(
+  intro: string,
+  tableRows: TableCellData[][],
+  conclusion: string
+): Document {
+  return new Document({
+    sections: [{
+      properties: {},
+      children: [
+        new Paragraph({ children: [new TextRun({ text: intro })] }),
+        createTableFromRows(tableRows),
+        new Paragraph({ children: [new TextRun({ text: conclusion })] })
+      ]
     }]
   });
 }
@@ -391,6 +472,105 @@ const scenarios: TestScenario[] = [
       'REPRESENTATIONS AND WARRANTIES',
       'NEW SECTION ADDED'
     ])
+  },
+
+  // 26. Basic table extraction
+  {
+    name: '26-table-basic',
+    description: 'Tests basic table content extraction',
+    original: createTableDocument([
+      [{ text: 'Header 1' }, { text: 'Header 2' }],
+      [{ text: 'Cell A' }, { text: 'Cell B' }],
+      [{ text: 'Cell C' }, { text: 'Cell D' }]
+    ]),
+    modified: createTableDocument([
+      [{ text: 'Header 1' }, { text: 'Header 2' }],
+      [{ text: 'Cell A' }, { text: 'Cell B' }],
+      [{ text: 'Cell C' }, { text: 'Cell D' }]
+    ])
+  },
+
+  // 27. Table with modified cell
+  {
+    name: '27-table-cell-modified',
+    description: 'Tests table cell content modification detection',
+    original: createTableDocument([
+      [{ text: 'Name' }, { text: 'Value' }],
+      [{ text: 'Item A' }, { text: '100' }],
+      [{ text: 'Item B' }, { text: '200' }]
+    ]),
+    modified: createTableDocument([
+      [{ text: 'Name' }, { text: 'Value' }],
+      [{ text: 'Item A' }, { text: '150' }],  // Value changed from 100 to 150
+      [{ text: 'Item B' }, { text: '200' }]
+    ])
+  },
+
+  // 28. Table with added row
+  {
+    name: '28-table-row-added',
+    description: 'Tests table row addition detection',
+    original: createTableDocument([
+      [{ text: 'Name' }, { text: 'Value' }],
+      [{ text: 'Item A' }, { text: '100' }]
+    ]),
+    modified: createTableDocument([
+      [{ text: 'Name' }, { text: 'Value' }],
+      [{ text: 'Item A' }, { text: '100' }],
+      [{ text: 'Item B' }, { text: '200' }]  // New row
+    ])
+  },
+
+  // 29. Table with removed row
+  {
+    name: '29-table-row-removed',
+    description: 'Tests table row removal detection',
+    original: createTableDocument([
+      [{ text: 'Name' }, { text: 'Value' }],
+      [{ text: 'Item A' }, { text: '100' }],
+      [{ text: 'Item B' }, { text: '200' }]
+    ]),
+    modified: createTableDocument([
+      [{ text: 'Name' }, { text: 'Value' }],
+      [{ text: 'Item A' }, { text: '100' }]
+      // Item B row removed
+    ])
+  },
+
+  // 30. Table with formatting changes
+  {
+    name: '30-table-formatting',
+    description: 'Tests table cell formatting change detection',
+    original: createTableDocument([
+      [{ text: 'Header' }, { text: 'Data' }],
+      [{ text: 'Normal text' }, { text: 'Value' }]
+    ]),
+    modified: createTableDocument([
+      [{ text: 'Header', bold: true }, { text: 'Data', bold: true }],
+      [{ text: 'Normal text' }, { text: 'Value' }]
+    ])
+  },
+
+  // 31. Mixed content with table
+  {
+    name: '31-mixed-with-table',
+    description: 'Tests document with paragraphs and table',
+    original: createMixedDocumentWithTable(
+      'This document contains a table:',
+      [
+        [{ text: 'Name' }, { text: 'Value' }],
+        [{ text: 'Item' }, { text: '100' }]
+      ],
+      'End of document.'
+    ),
+    modified: createMixedDocumentWithTable(
+      'This document contains a table:',
+      [
+        [{ text: 'Name' }, { text: 'Value' }],
+        [{ text: 'Item' }, { text: '200' }]  // Value changed
+      ],
+      'End of document.'
+    )
   }
 ];
 

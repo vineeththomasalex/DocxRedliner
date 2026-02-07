@@ -14,6 +14,18 @@ const NS = {
   w15: 'http://schemas.microsoft.com/office/word/2012/wordml'
 };
 
+export interface ExportOptions {
+  /** Include comments for each change (default: true) */
+  includeComments: boolean;
+  /** Include inline formatting (highlight/strikethrough) for changes (default: true) */
+  includeInlineFormatting: boolean;
+}
+
+const DEFAULT_OPTIONS: ExportOptions = {
+  includeComments: true,
+  includeInlineFormatting: true
+};
+
 interface CommentData {
   id: number;
   text: string;
@@ -27,12 +39,16 @@ export class DocxInPlaceExporter {
   private nextRevisionId = 0;
   private author = 'Document Comparison';
   private date = new Date().toISOString();
+  private options: ExportOptions = DEFAULT_OPTIONS;
 
   async export(
     diff: DocumentDiff,
     currentFileBuffer: ArrayBuffer,
-    originalFileName: string
+    originalFileName: string,
+    options: Partial<ExportOptions> = {}
   ): Promise<void> {
+    // Merge provided options with defaults
+    this.options = { ...DEFAULT_OPTIONS, ...options };
     // Load the current DOCX file
     this.zip = await JSZip.loadAsync(currentFileBuffer);
 
@@ -54,8 +70,11 @@ export class DocxInPlaceExporter {
     // Get all paragraphs from the document
     const paragraphs = Array.from(this.documentXml.getElementsByTagName('w:p'));
 
+    // Get all table rows from the document
+    const tableRows = Array.from(this.documentXml.getElementsByTagName('w:tr'));
+
     // Process each block diff
-    this.processBlockDiffs(diff.blockDiffs, paragraphs);
+    this.processBlockDiffs(diff.blockDiffs, paragraphs, tableRows);
 
     // Update the document XML
     const serializer = new XMLSerializer();
@@ -72,13 +91,15 @@ export class DocxInPlaceExporter {
     this.downloadBlob(blob, `${this.getBaseName(originalFileName)}_redlined.docx`);
   }
 
-  private processBlockDiffs(blockDiffs: BlockDiff[], paragraphs: Element[]): void {
-    // Track which paragraphs have been matched to avoid double-processing
+  private processBlockDiffs(blockDiffs: BlockDiff[], paragraphs: Element[], tableRows: Element[]): void {
+    // Track which elements have been matched to avoid double-processing
     const matchedParagraphs = new Set<Element>();
+    const matchedTableRows = new Set<Element>();
 
-    // First pass: match all non-deleted blocks to their paragraphs
+    // First pass: match all non-deleted blocks to their paragraphs or table rows
     // This builds a map so we know where to insert deletions
     const blockToParagraph = new Map<BlockDiff, Element>();
+    const blockToTableRow = new Map<BlockDiff, Element>();
 
     for (const blockDiff of blockDiffs) {
       if (blockDiff.type === 'delete') {
@@ -87,6 +108,16 @@ export class DocxInPlaceExporter {
 
       const block = blockDiff.currentBlock;
       if (!block || block.type === 'page-break') {
+        continue;
+      }
+
+      // Handle table-row blocks differently
+      if (block.type === 'table-row') {
+        const matchedRow = this.matchBlockToTableRow(block, tableRows, matchedTableRows);
+        if (matchedRow) {
+          matchedTableRows.add(matchedRow);
+          blockToTableRow.set(blockDiff, matchedRow);
+        }
         continue;
       }
 
@@ -111,6 +142,12 @@ export class DocxInPlaceExporter {
           continue;
         }
 
+        // Handle table-row deletions differently
+        if (block.type === 'table-row') {
+          this.insertDeletedTableRow(block);
+          continue;
+        }
+
         // Find the next non-deleted block's paragraph to insert before
         let insertBefore: Element | null = null;
         for (let j = i + 1; j < blockDiffs.length; j++) {
@@ -125,13 +162,29 @@ export class DocxInPlaceExporter {
         continue;
       }
 
-      // Handle insert and modify
+      const block = blockDiff.currentBlock!;
+
+      // Handle table-row blocks
+      if (block.type === 'table-row') {
+        const matchedRow = blockToTableRow.get(blockDiff);
+        if (matchedRow) {
+          switch (blockDiff.type) {
+            case 'insert':
+              this.markTableRowAsInserted(matchedRow, block);
+              break;
+            case 'modify':
+              this.applyTableRowChanges(matchedRow, blockDiff);
+              break;
+          }
+        }
+        continue;
+      }
+
+      // Handle paragraph and other blocks
       const matchedPara = blockToParagraph.get(blockDiff);
       if (!matchedPara) {
         continue;
       }
-
-      const block = blockDiff.currentBlock!;
 
       switch (blockDiff.type) {
         case 'insert':
@@ -182,6 +235,211 @@ export class DocxInPlaceExporter {
     return null;
   }
 
+  private matchBlockToTableRow(
+    block: Block,
+    tableRows: Element[],
+    matchedTableRows: Set<Element>
+  ): Element | null {
+    const blockText = this.normalizeText(block.text);
+
+    // First pass: exact match
+    for (const tr of tableRows) {
+      if (matchedTableRows.has(tr)) continue;
+
+      const rowText = this.normalizeText(this.getTableRowText(tr));
+      if (rowText === blockText) {
+        return tr;
+      }
+    }
+
+    // Second pass: fuzzy match
+    for (const tr of tableRows) {
+      if (matchedTableRows.has(tr)) continue;
+
+      const rowText = this.normalizeText(this.getTableRowText(tr));
+      if (rowText.length > 0 && blockText.length > 0) {
+        // Check if significant overlap
+        if (rowText.includes(blockText) || blockText.includes(rowText)) {
+          return tr;
+        }
+        // Check if starts with same content
+        const minLen = Math.min(rowText.length, blockText.length, 30);
+        if (minLen > 10 && rowText.substring(0, minLen) === blockText.substring(0, minLen)) {
+          return tr;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private getTableRowText(tr: Element): string {
+    // Extract text from all cells in the row, joined with ' | '
+    const cells = tr.getElementsByTagName('w:tc');
+    const cellTexts: string[] = [];
+
+    for (let i = 0; i < cells.length; i++) {
+      const textElements = cells[i].getElementsByTagName('w:t');
+      let cellText = '';
+      for (let j = 0; j < textElements.length; j++) {
+        cellText += textElements[j].textContent || '';
+      }
+      cellTexts.push(cellText.trim());
+    }
+
+    return cellTexts.join(' | ');
+  }
+
+  private markTableRowAsInserted(tr: Element, _block: Block): void {
+    // Add comment for this insertion
+    const commentId = this.addComment(`Added: New table row`);
+
+    // Get all cells in the row
+    const cells = tr.getElementsByTagName('w:tc');
+    if (cells.length === 0) {
+      return;
+    }
+
+    // Mark the first cell with comment start (if comments enabled)
+    if (commentId >= 0) {
+      const firstCell = cells[0];
+      const firstPara = firstCell.getElementsByTagName('w:p')[0];
+      if (firstPara) {
+        const runs = firstPara.getElementsByTagName('w:r');
+        if (runs.length > 0) {
+          const commentStart = this.createCommentRangeStart(commentId);
+          runs[0].parentNode?.insertBefore(commentStart, runs[0]);
+        }
+      }
+    }
+
+    // Apply insertion formatting to all cells
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i];
+      const runs = cell.getElementsByTagName('w:r');
+      for (let j = 0; j < runs.length; j++) {
+        this.applyInsertionFormatting(runs[j]);
+      }
+    }
+
+    // Mark the last cell with comment end (if comments enabled)
+    if (commentId >= 0) {
+      const lastCell = cells[cells.length - 1];
+      const lastPara = lastCell.getElementsByTagName('w:p')[0];
+      if (lastPara) {
+        const runs = lastPara.getElementsByTagName('w:r');
+        if (runs.length > 0) {
+          const lastRun = runs[runs.length - 1];
+          const commentEnd = this.createCommentRangeEnd(commentId);
+          const commentRef = this.createCommentReference(commentId);
+          lastRun.parentNode?.insertBefore(commentEnd, lastRun.nextSibling);
+          commentEnd.parentNode?.insertBefore(commentRef, commentEnd.nextSibling);
+        }
+      }
+    }
+  }
+
+  private insertDeletedTableRow(block: Block): void {
+    // For deleted table rows, we insert them as a deleted paragraph
+    // since inserting into table structure is complex
+    // This is a simplified approach that shows the deletion as text
+    const body = this.documentXml?.getElementsByTagName('w:body')[0];
+    if (!body) return;
+
+    const commentId = this.addComment(`Removed: Deleted table row`);
+
+    // Create a new paragraph with deletion markup
+    const newPara = this.documentXml!.createElementNS(NS.w, 'w:p');
+
+    // Add comment range start (if comments enabled)
+    if (commentId >= 0) {
+      newPara.appendChild(this.createCommentRangeStart(commentId));
+    }
+
+    // Create del element with the deleted text
+    const delElement = this.createDelElement();
+
+    // Create run with deleted text (prefix with [Table Row] to indicate it was a table)
+    const run = this.createRunWithText(`[Table Row] ${block.text}`, true);
+    delElement.appendChild(run);
+    newPara.appendChild(delElement);
+
+    // Add comment range end and reference (if comments enabled)
+    if (commentId >= 0) {
+      newPara.appendChild(this.createCommentRangeEnd(commentId));
+      newPara.appendChild(this.createCommentReference(commentId));
+    }
+
+    // Insert at end (before sectPr if present)
+    const sectPr = body.getElementsByTagName('w:sectPr')[0];
+    if (sectPr) {
+      body.insertBefore(newPara, sectPr);
+    } else {
+      body.appendChild(newPara);
+    }
+  }
+
+  private applyTableRowChanges(tr: Element, blockDiff: BlockDiff): void {
+    if (!blockDiff.wordDiff || blockDiff.wordDiff.length === 0) {
+      return;
+    }
+
+    // For table rows with modifications, we apply changes to the cells
+    // This is a simplified approach - we clear all cell content and rebuild it
+
+    const cells = tr.getElementsByTagName('w:tc');
+    if (cells.length === 0) {
+      return;
+    }
+
+    // Apply changes to the first cell's first paragraph (simplified approach)
+    const firstCell = cells[0];
+    const firstPara = firstCell.getElementsByTagName('w:p')[0];
+
+    if (firstPara) {
+      // Clear existing content (except pPr)
+      const pPr = firstPara.getElementsByTagName('w:pPr')[0];
+      while (firstPara.firstChild) {
+        firstPara.removeChild(firstPara.firstChild);
+      }
+      if (pPr) {
+        firstPara.appendChild(pPr);
+      }
+
+      // Add word-level changes
+      for (const change of blockDiff.wordDiff) {
+        if (change.added) {
+          const commentId = this.addComment(`Added in table: "${change.value.trim()}"`);
+          if (commentId >= 0) {
+            firstPara.appendChild(this.createCommentRangeStart(commentId));
+          }
+          const run = this.createRunWithText(change.value, false, true);
+          firstPara.appendChild(run);
+          if (commentId >= 0) {
+            firstPara.appendChild(this.createCommentRangeEnd(commentId));
+            firstPara.appendChild(this.createCommentReference(commentId));
+          }
+        } else if (change.removed) {
+          const commentId = this.addComment(`Removed from table: "${change.value.trim()}"`);
+          if (commentId >= 0) {
+            firstPara.appendChild(this.createCommentRangeStart(commentId));
+          }
+          const delElement = this.createDelElement();
+          const run = this.createRunWithText(change.value, true);
+          delElement.appendChild(run);
+          firstPara.appendChild(delElement);
+          if (commentId >= 0) {
+            firstPara.appendChild(this.createCommentRangeEnd(commentId));
+            firstPara.appendChild(this.createCommentReference(commentId));
+          }
+        } else {
+          const run = this.createRunWithText(change.value, false, false);
+          firstPara.appendChild(run);
+        }
+      }
+    }
+  }
+
   private getParagraphText(para: Element): string {
     const textElements = para.getElementsByTagName('w:t');
     let text = '';
@@ -206,24 +464,27 @@ export class DocxInPlaceExporter {
       return;
     }
 
-    // Apply green underline formatting to all runs (no w:ins to avoid Word overriding colors)
     const firstRun = runs[0];
 
-    // Insert comment range start before first run
-    const commentStart = this.createCommentRangeStart(commentId);
-    firstRun.parentNode?.insertBefore(commentStart, firstRun);
+    // Insert comment range start before first run (if comments enabled)
+    if (commentId >= 0) {
+      const commentStart = this.createCommentRangeStart(commentId);
+      firstRun.parentNode?.insertBefore(commentStart, firstRun);
+    }
 
     // Apply insertion formatting to each run directly
     for (const run of runs) {
       this.applyInsertionFormatting(run);
     }
 
-    // Add comment range end and reference after the last run
-    const lastRun = runs[runs.length - 1];
-    const commentEnd = this.createCommentRangeEnd(commentId);
-    const commentRef = this.createCommentReference(commentId);
-    lastRun.parentNode?.insertBefore(commentEnd, lastRun.nextSibling);
-    commentEnd.parentNode?.insertBefore(commentRef, commentEnd.nextSibling);
+    // Add comment range end and reference after the last run (if comments enabled)
+    if (commentId >= 0) {
+      const lastRun = runs[runs.length - 1];
+      const commentEnd = this.createCommentRangeEnd(commentId);
+      const commentRef = this.createCommentReference(commentId);
+      lastRun.parentNode?.insertBefore(commentEnd, lastRun.nextSibling);
+      commentEnd.parentNode?.insertBefore(commentRef, commentEnd.nextSibling);
+    }
   }
 
   private insertDeletedParagraph(block: Block, insertBefore: Element | null): void {
@@ -236,8 +497,10 @@ export class DocxInPlaceExporter {
     // Create a new paragraph with deletion markup
     const newPara = this.documentXml!.createElementNS(NS.w, 'w:p');
 
-    // Add comment range start
-    newPara.appendChild(this.createCommentRangeStart(commentId));
+    // Add comment range start (if comments enabled)
+    if (commentId >= 0) {
+      newPara.appendChild(this.createCommentRangeStart(commentId));
+    }
 
     // Create del element with the deleted text
     const delElement = this.createDelElement();
@@ -247,9 +510,11 @@ export class DocxInPlaceExporter {
     delElement.appendChild(run);
     newPara.appendChild(delElement);
 
-    // Add comment range end and reference
-    newPara.appendChild(this.createCommentRangeEnd(commentId));
-    newPara.appendChild(this.createCommentReference(commentId));
+    // Add comment range end and reference (if comments enabled)
+    if (commentId >= 0) {
+      newPara.appendChild(this.createCommentRangeEnd(commentId));
+      newPara.appendChild(this.createCommentReference(commentId));
+    }
 
     // Insert at the correct position
     if (insertBefore) {
@@ -286,28 +551,36 @@ export class DocxInPlaceExporter {
         // Insertion - use visual formatting only (no w:ins to avoid Word overriding colors)
         const commentId = this.addComment(`Added: "${change.value.trim()}"`);
 
-        para.appendChild(this.createCommentRangeStart(commentId));
+        if (commentId >= 0) {
+          para.appendChild(this.createCommentRangeStart(commentId));
+        }
 
-        // Create run with green underline formatting (no track change wrapper)
+        // Create run with highlight formatting (no track change wrapper)
         const run = this.createRunWithText(change.value, false, true);
         para.appendChild(run);
 
-        para.appendChild(this.createCommentRangeEnd(commentId));
-        para.appendChild(this.createCommentReference(commentId));
+        if (commentId >= 0) {
+          para.appendChild(this.createCommentRangeEnd(commentId));
+          para.appendChild(this.createCommentReference(commentId));
+        }
 
       } else if (change.removed) {
         // Deletion
         const commentId = this.addComment(`Removed: "${change.value.trim()}"`);
 
-        para.appendChild(this.createCommentRangeStart(commentId));
+        if (commentId >= 0) {
+          para.appendChild(this.createCommentRangeStart(commentId));
+        }
 
         const delElement = this.createDelElement();
         const run = this.createRunWithText(change.value, true);
         delElement.appendChild(run);
         para.appendChild(delElement);
 
-        para.appendChild(this.createCommentRangeEnd(commentId));
-        para.appendChild(this.createCommentReference(commentId));
+        if (commentId >= 0) {
+          para.appendChild(this.createCommentRangeEnd(commentId));
+          para.appendChild(this.createCommentReference(commentId));
+        }
 
       } else {
         // Unchanged text
@@ -328,25 +601,32 @@ export class DocxInPlaceExporter {
   private createRunWithText(text: string, isDeleted: boolean, isInserted: boolean = false): Element {
     const run = this.documentXml!.createElementNS(NS.w, 'w:r');
 
-    // Add run properties for formatting
+    // Add run properties for formatting (only if inline formatting is enabled)
     const rPr = this.documentXml!.createElementNS(NS.w, 'w:rPr');
+    let hasFormatting = false;
 
-    if (isDeleted) {
-      // Red color and strikethrough for deletions
-      const color = this.documentXml!.createElementNS(NS.w, 'w:color');
-      color.setAttribute('w:val', 'FF0000');
-      rPr.appendChild(color);
+    if (this.options.includeInlineFormatting) {
+      if (isDeleted) {
+        // Red color and strikethrough for deletions
+        const color = this.documentXml!.createElementNS(NS.w, 'w:color');
+        color.setAttribute('w:val', 'FF0000');
+        rPr.appendChild(color);
 
-      const strike = this.documentXml!.createElementNS(NS.w, 'w:strike');
-      rPr.appendChild(strike);
-    } else if (isInserted) {
-      // Yellow highlight for insertions (keeps normal text color)
-      const highlight = this.documentXml!.createElementNS(NS.w, 'w:highlight');
-      highlight.setAttribute('w:val', 'yellow');
-      rPr.appendChild(highlight);
+        const strike = this.documentXml!.createElementNS(NS.w, 'w:strike');
+        rPr.appendChild(strike);
+        hasFormatting = true;
+      } else if (isInserted) {
+        // Yellow highlight for insertions (keeps normal text color)
+        const highlight = this.documentXml!.createElementNS(NS.w, 'w:highlight');
+        highlight.setAttribute('w:val', 'yellow');
+        rPr.appendChild(highlight);
+        hasFormatting = true;
+      }
     }
 
-    run.appendChild(rPr);
+    if (hasFormatting) {
+      run.appendChild(rPr);
+    }
 
     // Add text element
     const textElement = this.documentXml!.createElementNS(NS.w, isDeleted ? 'w:delText' : 'w:t');
@@ -359,6 +639,11 @@ export class DocxInPlaceExporter {
   }
 
   private applyInsertionFormatting(run: Element): void {
+    // Skip if inline formatting is disabled
+    if (!this.options.includeInlineFormatting) {
+      return;
+    }
+
     // Get or create run properties
     let rPr = run.getElementsByTagName('w:rPr')[0];
     if (!rPr) {
@@ -396,10 +681,15 @@ export class DocxInPlaceExporter {
   }
 
   private addComment(text: string): number {
+    // Return -1 if comments are disabled
+    if (!this.options.includeComments) {
+      return -1;
+    }
     const id = this.nextCommentId++;
     this.comments.push({ id, text });
     return id;
   }
+
 
   private async addCommentsToZip(): Promise<void> {
     // Build comments.xml

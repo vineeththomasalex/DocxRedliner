@@ -9,7 +9,12 @@ import {
   AlignmentType,
   PageBreak,
   LevelFormat,
-  AlignmentType as LevelAlignment
+  AlignmentType as LevelAlignment,
+  Table,
+  TableRow,
+  TableCell,
+  WidthType,
+  BorderStyle
 } from 'docx';
 import { writeFile, mkdir } from 'fs/promises';
 import { dirname } from 'path';
@@ -450,6 +455,206 @@ export function createMixedDocumentWithNumberedList(
           new Paragraph({
             children: [new TextRun({ text: conclusion })]
           })
+        ]
+      }
+    ]
+  });
+}
+
+// ============= Table Creation Helpers =============
+
+export interface TableCellOptions {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+}
+
+export interface TableRowOptions {
+  cells: TableCellOptions[];
+}
+
+export interface TableOptions {
+  rows: TableRowOptions[];
+  columnWidths?: number[];
+}
+
+/**
+ * Create a table cell with optional formatting
+ */
+export function createTableCell(options: TableCellOptions): TableCell {
+  return new TableCell({
+    children: [
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: options.text,
+            bold: options.bold,
+            italics: options.italic
+          })
+        ]
+      })
+    ]
+  });
+}
+
+/**
+ * Create a table row from cell options
+ */
+export function createTableRow(options: TableRowOptions): TableRow {
+  return new TableRow({
+    children: options.cells.map(cell => createTableCell(cell))
+  });
+}
+
+/**
+ * Create a table from row options
+ */
+export function createTable(options: TableOptions): Table {
+  const columnCount = options.rows[0]?.cells.length || 1;
+  const columnWidths = options.columnWidths || Array(columnCount).fill(2000);
+
+  return new Table({
+    rows: options.rows.map(row => createTableRow(row)),
+    width: {
+      size: columnWidths.reduce((a, b) => a + b, 0),
+      type: WidthType.DXA
+    }
+  });
+}
+
+/**
+ * Create a document with a table
+ */
+export function createTableDocument(tableOptions: TableOptions, title?: string): Document {
+  const children: (Paragraph | Table)[] = [];
+
+  if (title) {
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: title })]
+      })
+    );
+  }
+
+  children.push(createTable(tableOptions));
+
+  return new Document({
+    sections: [{ children }]
+  });
+}
+
+/**
+ * Create a simple 2x2 table for testing
+ */
+export function createSimpleTable(): Table {
+  return createTable({
+    rows: [
+      { cells: [{ text: 'Header 1' }, { text: 'Header 2' }] },
+      { cells: [{ text: 'Cell 1' }, { text: 'Cell 2' }] }
+    ]
+  });
+}
+
+/**
+ * Create a document pair for testing table cell modifications
+ */
+export function createTableCellModifiedPair(): { original: Document; modified: Document } {
+  return {
+    original: createTableDocument({
+      rows: [
+        { cells: [{ text: 'Name' }, { text: 'Value' }] },
+        { cells: [{ text: 'Item A' }, { text: '100' }] },
+        { cells: [{ text: 'Item B' }, { text: '200' }] }
+      ]
+    }),
+    modified: createTableDocument({
+      rows: [
+        { cells: [{ text: 'Name' }, { text: 'Value' }] },
+        { cells: [{ text: 'Item A' }, { text: '150' }] },  // Value changed
+        { cells: [{ text: 'Item B' }, { text: '200' }] }
+      ]
+    })
+  };
+}
+
+/**
+ * Create a document pair for testing table row addition
+ */
+export function createTableRowAddedPair(): { original: Document; modified: Document } {
+  return {
+    original: createTableDocument({
+      rows: [
+        { cells: [{ text: 'Name' }, { text: 'Value' }] },
+        { cells: [{ text: 'Item A' }, { text: '100' }] }
+      ]
+    }),
+    modified: createTableDocument({
+      rows: [
+        { cells: [{ text: 'Name' }, { text: 'Value' }] },
+        { cells: [{ text: 'Item A' }, { text: '100' }] },
+        { cells: [{ text: 'Item B' }, { text: '200' }] }  // New row
+      ]
+    })
+  };
+}
+
+/**
+ * Create a document pair for testing table row removal
+ */
+export function createTableRowRemovedPair(): { original: Document; modified: Document } {
+  return {
+    original: createTableDocument({
+      rows: [
+        { cells: [{ text: 'Name' }, { text: 'Value' }] },
+        { cells: [{ text: 'Item A' }, { text: '100' }] },
+        { cells: [{ text: 'Item B' }, { text: '200' }] }
+      ]
+    }),
+    modified: createTableDocument({
+      rows: [
+        { cells: [{ text: 'Name' }, { text: 'Value' }] },
+        { cells: [{ text: 'Item A' }, { text: '100' }] }
+        // Item B row removed
+      ]
+    })
+  };
+}
+
+/**
+ * Create a document pair for testing table with formatting changes
+ */
+export function createTableFormattingChangePair(): { original: Document; modified: Document } {
+  return {
+    original: createTableDocument({
+      rows: [
+        { cells: [{ text: 'Header' }, { text: 'Data' }] },
+        { cells: [{ text: 'Normal text' }, { text: 'Value' }] }
+      ]
+    }),
+    modified: createTableDocument({
+      rows: [
+        { cells: [{ text: 'Header', bold: true }, { text: 'Data', bold: true }] },
+        { cells: [{ text: 'Normal text' }, { text: 'Value' }] }
+      ]
+    })
+  };
+}
+
+/**
+ * Create a document with mixed content including a table
+ */
+export function createMixedDocumentWithTable(
+  intro: string,
+  tableRows: TableRowOptions[],
+  conclusion: string
+): Document {
+  return new Document({
+    sections: [
+      {
+        children: [
+          new Paragraph({ children: [new TextRun({ text: intro })] }),
+          createTable({ rows: tableRows }),
+          new Paragraph({ children: [new TextRun({ text: conclusion })] })
         ]
       }
     ]

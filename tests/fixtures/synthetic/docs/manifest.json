@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-07T02:53:05.113Z",
+  "generated": "2026-02-07T04:15:47.716Z",
   "scenarios": [
     {
       "name": "01-word-insertion",
@@ -144,6 +144,42 @@
       "description": "Tests diff of native numbered lists with changes",
       "original": "25-numbered-list-modified_original.docx",
       "modified": "25-numbered-list-modified_modified.docx"
+    },
+    {
+      "name": "26-table-basic",
+      "description": "Tests basic table content extraction",
+      "original": "26-table-basic_original.docx",
+      "modified": "26-table-basic_modified.docx"
+    },
+    {
+      "name": "27-table-cell-modified",
+      "description": "Tests table cell content modification detection",
+      "original": "27-table-cell-modified_original.docx",
+      "modified": "27-table-cell-modified_modified.docx"
+    },
+    {
+      "name": "28-table-row-added",
+      "description": "Tests table row addition detection",
+      "original": "28-table-row-added_original.docx",
+      "modified": "28-table-row-added_modified.docx"
+    },
+    {
+      "name": "29-table-row-removed",
+      "description": "Tests table row removal detection",
+      "original": "29-table-row-removed_original.docx",
+      "modified": "29-table-row-removed_modified.docx"
+    },
+    {
+      "name": "30-table-formatting",
+      "description": "Tests table cell formatting change detection",
+      "original": "30-table-formatting_original.docx",
+      "modified": "30-table-formatting_modified.docx"
+    },
+    {
+      "name": "31-mixed-with-table",
+      "description": "Tests document with paragraphs and table",
+      "original": "31-mixed-with-table_original.docx",
+      "modified": "31-mixed-with-table_modified.docx"
     },
     {
       "name": "21-large-document",

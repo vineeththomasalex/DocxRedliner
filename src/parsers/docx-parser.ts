@@ -62,7 +62,187 @@ export class DocxParser {
       ast.blocks = this.mergeBlocks(ast.blocks, numberedListBlocks);
     }
 
+    // Extract tables directly from XML (row-level blocks for better diffing)
+    // Reset table counter for each document to ensure consistent IDs
+    this.tableCounter = 0;
+    const tableBlocks = await this.extractTables(buffer);
+
+    // Merge table-row blocks with existing blocks (removing old table blocks)
+    if (tableBlocks.length > 0) {
+      ast.blocks = this.mergeTableBlocks(ast.blocks, tableBlocks);
+    }
+
     return ast;
+  }
+
+  /**
+   * Merge table-row blocks with existing blocks, replacing old 'table' type blocks
+   * with individual row blocks for better diffing.
+   */
+  private mergeTableBlocks(existingBlocks: Block[], tableBlocks: { block: Block; xmlIndex: number }[]): Block[] {
+    if (tableBlocks.length === 0) {
+      return existingBlocks;
+    }
+
+    // Remove any 'table' type blocks from existing blocks (they'll be replaced by table-row blocks)
+    const nonTableBlocks = existingBlocks.filter(b => b.type !== 'table');
+
+    // Sort table blocks by their XML index
+    const sortedTableBlocks = [...tableBlocks].sort((a, b) => a.xmlIndex - b.xmlIndex);
+
+    // For simplicity, append table-row blocks in their document order
+    // A more sophisticated approach would interleave based on xmlIndex
+    // but this works well for most documents
+    const result: Block[] = [];
+
+    // Create a set of table row texts for deduplication
+    const tableTexts = new Set(sortedTableBlocks.map(tb => tb.block.text.toLowerCase().trim()));
+
+    // Add non-table blocks, filtering out any that match table content
+    for (const block of nonTableBlocks) {
+      if (!tableTexts.has(block.text.toLowerCase().trim())) {
+        result.push(block);
+      }
+    }
+
+    // Find insertion point for table blocks (where tables originally were)
+    // For now, add all table rows after existing non-table content
+    // TODO: Could improve by tracking table position in document
+    for (const tb of sortedTableBlocks) {
+      result.push(tb.block);
+    }
+
+    // Regenerate IDs to ensure proper ordering
+    return result.map((block, index) => ({
+      ...block,
+      id: this.generateBlockId(block.text, index)
+    }));
+  }
+
+  private tableCounter = 0;
+
+  /**
+   * Extract tables directly from DOCX XML.
+   * Creates one block per table row (type: 'table-row') with tableId linking rows.
+   * This provides row-level diffing instead of flattening entire tables.
+   */
+  private async extractTables(buffer: ArrayBuffer): Promise<{ block: Block; xmlIndex: number }[]> {
+    try {
+      const zip = await JSZip.loadAsync(buffer);
+      const documentXml = await zip.file('word/document.xml')?.async('string');
+
+      if (!documentXml) {
+        return [];
+      }
+
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(documentXml, 'application/xml');
+
+      const tableBlocks: { block: Block; xmlIndex: number }[] = [];
+      const tblElements = doc.getElementsByTagName('w:tbl');
+
+      // We need to find position of tables relative to paragraphs
+      // Get all body children to determine ordering
+      const bodyElement = doc.getElementsByTagName('w:body')[0];
+      if (!bodyElement) {
+        return [];
+      }
+
+      // Build index of all elements for positioning
+      const bodyChildren = Array.from(bodyElement.children);
+      let globalIndex = 0;
+
+      for (let tblIndex = 0; tblIndex < tblElements.length; tblIndex++) {
+        const tbl = tblElements[tblIndex];
+        const tableId = `table-${this.tableCounter++}`;
+
+        // Find position of this table in the document body
+        const tablePosition = bodyChildren.indexOf(tbl);
+
+        // Extract all rows from this table
+        const trElements = tbl.getElementsByTagName('w:tr');
+
+        for (let rowIdx = 0; rowIdx < trElements.length; rowIdx++) {
+          const tr = trElements[rowIdx];
+          const cellTexts: string[] = [];
+
+          // Extract text from all cells in this row
+          const tcElements = tr.getElementsByTagName('w:tc');
+          for (let cellIdx = 0; cellIdx < tcElements.length; cellIdx++) {
+            const tc = tcElements[cellIdx];
+            const cellText = this.extractTextFromTableCell(tc);
+            cellTexts.push(cellText);
+          }
+
+          // Join cells with ' | ' separator
+          const rowText = cellTexts.join(' | ').trim();
+
+          if (rowText) {
+            const formatting = this.extractFormattingFromTableRow(tr);
+            const normalizedText = rowText.replace(/\s+/g, ' ');
+
+            tableBlocks.push({
+              block: {
+                id: this.generateBlockId(normalizedText, 2000 + globalIndex),
+                type: 'table-row',
+                text: normalizedText,
+                runs: [{ text: normalizedText, formatting }],
+                formatting,
+                tableId,
+                rowIndex: rowIdx
+              },
+              // Use table position for ordering
+              xmlIndex: tablePosition >= 0 ? tablePosition * 100 + rowIdx : 2000 + globalIndex
+            });
+            globalIndex++;
+          }
+        }
+      }
+
+      return tableBlocks;
+    } catch (error) {
+      console.warn('Failed to extract tables:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Extract text content from a table cell (<w:tc>) element
+   */
+  private extractTextFromTableCell(tc: Element): string {
+    const textElements = tc.getElementsByTagName('w:t');
+    let text = '';
+    for (let i = 0; i < textElements.length; i++) {
+      text += textElements[i].textContent || '';
+    }
+    return text.trim();
+  }
+
+  /**
+   * Extract formatting from a table row by examining <w:rPr> elements
+   */
+  private extractFormattingFromTableRow(tr: Element): TextFormatting {
+    const formatting: TextFormatting = {};
+
+    // Check for bold
+    const boldElements = tr.getElementsByTagName('w:b');
+    if (boldElements.length > 0) {
+      const val = boldElements[0].getAttribute('w:val');
+      if (val === null || val === '' || val === 'true' || val === '1') {
+        formatting.bold = true;
+      }
+    }
+
+    // Check for italic
+    const italicElements = tr.getElementsByTagName('w:i');
+    if (italicElements.length > 0) {
+      const val = italicElements[0].getAttribute('w:val');
+      if (val === null || val === '' || val === 'true' || val === '1') {
+        formatting.italic = true;
+      }
+    }
+
+    return formatting;
   }
 
   /**

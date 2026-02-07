@@ -8,7 +8,7 @@ import { DocxParser } from './parsers/docx-parser';
 import { DiffEngine, type DiffResult } from './diff/diff-engine';
 import { DiffRenderer } from './renderer/diff-renderer';
 import { ChangeNavigator } from './renderer/change-navigator';
-import { DocxInPlaceExporter } from './ui/docx-export-inplace';
+import { DocxInPlaceExporter, type ExportOptions } from './ui/docx-export-inplace';
 import { DebugExporter } from './ui/debug-export';
 import type { DocumentAST } from './types/ast.types';
 import type { DocumentDiff } from './types/diff.types';
@@ -39,6 +39,11 @@ class DocRedlinerApp {
   // Store raw file buffer for in-place DOCX export
   private currentFileBuffer: ArrayBuffer | null = null;
 
+  // UI elements
+  private compareButton: HTMLButtonElement | null = null;
+  private settingsToggle: HTMLElement | null = null;
+  private settingsFlyout: HTMLElement | null = null;
+
   constructor() {
     this.fileUpload = new FileUploadHandler();
     this.parser = new DocxParser();
@@ -50,14 +55,15 @@ class DocRedlinerApp {
     this.debugMode = this.checkDebugMode();
     this.diffEngine.setDebugMode(this.debugMode);
 
-    this.fileUpload.onFilesReady((original, current) => {
-      this.originalFileName = original.name;
-      this.currentFileName = current.name;
-      this.compareDocuments(original, current);
+    // Set up file change handler to enable/disable Compare button
+    this.fileUpload.onFileChange((hasOriginal, hasCurrent) => {
+      this.updateCompareButtonState(hasOriginal && hasCurrent);
     });
 
+    this.setupCompareButton();
     this.setupDocxExportButton();
     this.setupDebugExportButton();
+    this.setupSettingsToggle();
   }
 
   /**
@@ -66,6 +72,52 @@ class DocRedlinerApp {
   private checkDebugMode(): boolean {
     const urlParams = new URLSearchParams(window.location.search);
     return urlParams.get('debug') === 'true';
+  }
+
+  private setupCompareButton() {
+    this.compareButton = document.getElementById('compare-btn') as HTMLButtonElement;
+    if (this.compareButton) {
+      this.compareButton.addEventListener('click', () => this.handleCompareClick());
+    }
+  }
+
+  private updateCompareButtonState(enabled: boolean) {
+    if (this.compareButton) {
+      this.compareButton.disabled = !enabled;
+    }
+  }
+
+  private async handleCompareClick() {
+    const files = this.fileUpload.getFiles();
+    if (!files) {
+      alert('Please select both original and current documents.');
+      return;
+    }
+
+    // Show loading state on button
+    this.setCompareButtonLoading(true);
+
+    try {
+      this.originalFileName = files.original.name;
+      this.currentFileName = files.current.name;
+      await this.compareDocuments(files.original, files.current);
+    } finally {
+      this.setCompareButtonLoading(false);
+    }
+  }
+
+  private setCompareButtonLoading(loading: boolean) {
+    if (!this.compareButton) return;
+
+    if (loading) {
+      this.compareButton.classList.add('comparing');
+      this.compareButton.innerHTML = '<span class="spinner"></span>Comparing...';
+      this.compareButton.disabled = true;
+    } else {
+      this.compareButton.classList.remove('comparing');
+      this.compareButton.textContent = 'Compare';
+      this.compareButton.disabled = !this.fileUpload.areBothFilesReady();
+    }
   }
 
   private async compareDocuments(originalFile: File, currentFile: File) {
@@ -189,6 +241,45 @@ class DocRedlinerApp {
     }
   }
 
+  private setupSettingsToggle() {
+    this.settingsToggle = document.getElementById('settings-toggle');
+    this.settingsFlyout = document.getElementById('settings-flyout');
+
+    if (this.settingsToggle && this.settingsFlyout) {
+      // Toggle flyout on button click
+      this.settingsToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isVisible = this.settingsFlyout!.style.display !== 'none';
+        this.settingsFlyout!.style.display = isVisible ? 'none' : 'block';
+      });
+
+      // Close flyout when clicking outside
+      document.addEventListener('click', (e) => {
+        if (this.settingsFlyout &&
+            this.settingsToggle &&
+            !this.settingsFlyout.contains(e.target as Node) &&
+            !this.settingsToggle.contains(e.target as Node)) {
+          this.settingsFlyout.style.display = 'none';
+        }
+      });
+
+      // Prevent flyout from closing when clicking inside
+      this.settingsFlyout.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+    }
+  }
+
+  private getExportOptions(): ExportOptions {
+    const commentsCheckbox = document.getElementById('setting-comments') as HTMLInputElement;
+    const inlineCheckbox = document.getElementById('setting-inline') as HTMLInputElement;
+
+    return {
+      includeComments: commentsCheckbox?.checked ?? true,
+      includeInlineFormatting: inlineCheckbox?.checked ?? true
+    };
+  }
+
   private async exportDocx() {
     const exportButton = document.getElementById('export-docx');
 
@@ -209,17 +300,21 @@ class DocRedlinerApp {
       // Small delay to allow UI to update
       await new Promise(resolve => setTimeout(resolve, 10));
 
+      // Get export options from settings
+      const options = this.getExportOptions();
+
       // Use in-place exporter to preserve original formatting
       await this.docxInPlaceExporter.export(
         this.currentDiff,
         this.currentFileBuffer,
-        this.originalFileName
+        this.originalFileName,
+        options
       );
     } catch (error) {
       console.error('DOCX export failed:', error);
       alert('Failed to export DOCX. Please try again.');
     } finally {
-      this.setButtonLoading(exportButton, false, 'Export DOCX');
+      this.setButtonLoading(exportButton, false, 'Export Redlined Docx');
     }
   }
 
