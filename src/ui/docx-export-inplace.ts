@@ -370,9 +370,9 @@ export class DocxInPlaceExporter {
       newPara.appendChild(this.createCommentReference(commentId));
     }
 
-    // Insert at end (before sectPr if present)
+    // Insert at end of body (before sectPr if it's a direct child)
     const sectPr = body.getElementsByTagName('w:sectPr')[0];
-    if (sectPr) {
+    if (sectPr && sectPr.parentNode === body) {
       body.insertBefore(newPara, sectPr);
     } else {
       body.appendChild(newPara);
@@ -521,9 +521,9 @@ export class DocxInPlaceExporter {
       // Insert before the next paragraph
       insertBefore.parentNode?.insertBefore(newPara, insertBefore);
     } else {
-      // No following paragraph found, insert at end (before sectPr if present)
+      // No following paragraph found, insert at end (before sectPr if it's a direct child)
       const sectPr = body.getElementsByTagName('w:sectPr')[0];
-      if (sectPr) {
+      if (sectPr && sectPr.parentNode === body) {
         body.insertBefore(newPara, sectPr);
       } else {
         body.appendChild(newPara);
