@@ -5,6 +5,21 @@ import type { Change } from 'diff';
 
 export type DiffType = 'insert' | 'delete' | 'modify' | 'unchanged';
 
+/**
+ * Represents a phrase-level replacement where multiple consecutive word changes
+ * are grouped into a single replacement operation.
+ */
+export interface PhraseReplacement {
+  type: 'phrase-replace';
+  deletedText: string;
+  insertedText: string;
+}
+
+/**
+ * A change that can be either an individual word change or a grouped phrase replacement.
+ */
+export type GroupedChange = Change | PhraseReplacement;
+
 export interface FormatChange {
   type: 'format-change';
   text: string;
@@ -26,6 +41,7 @@ export interface BlockDiff {
   originalBlock?: Block;
   currentBlock?: Block;
   wordDiff?: Change[];
+  groupedDiff?: GroupedChange[];  // Grouped changes for better display
   formatDiff?: DiffChange[];
   changeId?: string;
 }

@@ -2,8 +2,15 @@
 
 import { diffWords, type Change } from 'diff';
 import type { DocumentAST, Block, TextFormatting } from '../types/ast.types';
-import type { BlockDiff, DiffChange, DocumentDiff } from '../types/diff.types';
+import type { BlockDiff, DiffChange, DocumentDiff, GroupedChange, PhraseReplacement } from '../types/diff.types';
 import type { AlignmentDecision } from '../types/debug.types';
+
+// Configuration for grouping consecutive word changes
+const GROUPING_CONFIG = {
+  CHANGE_DENSITY_THRESHOLD: 0.6,  // 60% of words must change to trigger grouping
+  MIN_CHANGED_WORDS: 3,           // Minimum changed words to consider grouping
+  MAX_UNCHANGED_GAP: 1,           // Max unchanged words before breaking a group
+};
 
 export interface DiffResult {
   diff: DocumentDiff;
@@ -71,6 +78,7 @@ export class DiffEngine {
         } else {
           // Modified block - perform word-level diff
           const wordDiff = diffWords(origBlock.text, currBlock.text);
+          const groupedDiff = this.groupConsecutiveChanges(wordDiff);
           const formatDiff = this.diffFormatting(origBlock, currBlock, wordDiff);
 
           const hasChanges = wordDiff.some(change => change.added || change.removed) ||
@@ -81,6 +89,7 @@ export class DiffEngine {
             originalBlock: origBlock,
             currentBlock: currBlock,
             wordDiff,
+            groupedDiff,
             formatDiff,
             changeId: hasChanges ? `change-${changeId++}` : undefined
           });
@@ -345,5 +354,110 @@ export class DiffEngine {
       fmt1.font === fmt2.font &&
       fmt1.fontSize === fmt2.fontSize
     );
+  }
+
+  /**
+   * Groups consecutive word changes into phrase-level replacements when the
+   * change density is high enough. This improves readability for sentence rewrites.
+   */
+  private groupConsecutiveChanges(wordDiff: Change[]): GroupedChange[] {
+    const result: GroupedChange[] = [];
+    let i = 0;
+
+    while (i < wordDiff.length) {
+      const change = wordDiff[i];
+
+      // Pass through unchanged text
+      if (!change.added && !change.removed) {
+        result.push(change);
+        i++;
+        continue;
+      }
+
+      // Found a change - look ahead to find span boundary
+      const span = this.findChangeSpan(wordDiff, i);
+
+      if (this.shouldGroup(span)) {
+        // Collect all deleted and inserted text
+        const deletedParts: string[] = [];
+        const insertedParts: string[] = [];
+
+        for (let j = span.start; j < span.end; j++) {
+          const c = wordDiff[j];
+          if (c.removed) {
+            deletedParts.push(c.value);
+          } else if (c.added) {
+            insertedParts.push(c.value);
+          } else {
+            // Unchanged text goes to both (it's part of the phrase context)
+            deletedParts.push(c.value);
+            insertedParts.push(c.value);
+          }
+        }
+
+        const phraseReplacement: PhraseReplacement = {
+          type: 'phrase-replace',
+          deletedText: deletedParts.join('').trim(),
+          insertedText: insertedParts.join('').trim(),
+        };
+        result.push(phraseReplacement);
+
+        i = span.end;
+      } else {
+        // Keep individual changes
+        result.push(change);
+        i++;
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Finds the boundary of a change span - a sequence of changes with small
+   * unchanged gaps between them.
+   */
+  private findChangeSpan(wordDiff: Change[], start: number): { start: number; end: number; changes: Change[] } {
+    let end = start;
+    let unchangedGap = 0;
+
+    while (end < wordDiff.length) {
+      const c = wordDiff[end];
+      if (c.added || c.removed) {
+        unchangedGap = 0;
+        end++;
+      } else {
+        // Count words in unchanged segment
+        const words = c.value.trim().split(/\s+/).filter(w => w.length > 0);
+        unchangedGap += words.length;
+
+        if (unchangedGap > GROUPING_CONFIG.MAX_UNCHANGED_GAP) {
+          break; // Gap too large, end span here
+        }
+        end++;
+      }
+    }
+
+    return { start, end, changes: wordDiff.slice(start, end) };
+  }
+
+  /**
+   * Determines whether a span of changes should be grouped into a phrase replacement.
+   */
+  private shouldGroup(span: { changes: Change[] }): boolean {
+    let totalWords = 0;
+    let changedWords = 0;
+
+    for (const c of span.changes) {
+      const words = c.value.trim().split(/\s+/).filter(w => w.length > 0).length;
+      totalWords += words;
+      if (c.added || c.removed) {
+        changedWords += words;
+      }
+    }
+
+    const density = totalWords > 0 ? changedWords / totalWords : 0;
+    return density >= GROUPING_CONFIG.CHANGE_DENSITY_THRESHOLD
+        && changedWords >= GROUPING_CONFIG.MIN_CHANGED_WORDS;
   }
 }

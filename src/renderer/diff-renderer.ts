@@ -1,6 +1,6 @@
 // Diff Renderer - Renders redlined comparison with highlighting
 
-import type { DocumentDiff, BlockDiff } from '../types/diff.types';
+import type { DocumentDiff, BlockDiff, GroupedChange, PhraseReplacement } from '../types/diff.types';
 import type { TextFormatting, SectionProperties } from '../types/ast.types';
 
 export class DiffRenderer {
@@ -106,19 +106,27 @@ export class DiffRenderer {
   }
 
   private renderRedlinedModifiedBlock(blockDiff: BlockDiff, changeClass: string): string {
-    if (!blockDiff.wordDiff) {
+    // Prefer groupedDiff if available, fall back to wordDiff
+    const changes = blockDiff.groupedDiff || blockDiff.wordDiff;
+    if (!changes) {
       return this.renderBlock(blockDiff.currentBlock!, 'unchanged', changeClass);
     }
 
     const block = blockDiff.currentBlock!;
+    const origBlock = blockDiff.originalBlock!;
     const typeClass = `para-${block.type}`;
     let html = `<div class="block block-modified ${typeClass}"${changeClass}>`;
 
-    // Render word diffs with formatting preserved
-    blockDiff.wordDiff.forEach((change) => {
-      if (change.removed) {
+    // Render changes with formatting preserved
+    for (const change of changes) {
+      if (this.isPhraseReplacement(change)) {
+        // Render phrase replacement: deleted text followed by inserted text
+        const deletedFormatted = this.renderFormattedText(change.deletedText, origBlock.formatting);
+        const insertedFormatted = this.renderFormattedText(change.insertedText, block.formatting);
+        html += `<span class="diff-delete">${deletedFormatted}</span>`;
+        html += `<span class="diff-insert">${insertedFormatted}</span>`;
+      } else if (change.removed) {
         // Apply original block formatting to deleted text
-        const origBlock = blockDiff.originalBlock!;
         const formattedText = this.renderFormattedText(change.value, origBlock.formatting);
         html += `<span class="diff-delete">${formattedText}</span>`;
       } else if (change.added) {
@@ -129,10 +137,17 @@ export class DiffRenderer {
         // Unchanged text - apply current block formatting
         html += this.renderFormattedText(change.value, block.formatting);
       }
-    });
+    }
 
     html += '</div>';
     return html;
+  }
+
+  /**
+   * Type guard to check if a change is a PhraseReplacement
+   */
+  private isPhraseReplacement(change: GroupedChange): change is PhraseReplacement {
+    return 'type' in change && change.type === 'phrase-replace';
   }
 
   private renderFormattedText(text: string, formatting: TextFormatting): string {

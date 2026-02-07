@@ -2,7 +2,7 @@
 // Preserves all original formatting (columns, fonts, styles, images, headers/footers)
 
 import JSZip from 'jszip';
-import type { DocumentDiff, BlockDiff } from '../types/diff.types';
+import type { DocumentDiff, BlockDiff, GroupedChange, PhraseReplacement } from '../types/diff.types';
 import type { Block } from '../types/ast.types';
 
 // XML namespaces used in DOCX
@@ -380,7 +380,9 @@ export class DocxInPlaceExporter {
   }
 
   private applyTableRowChanges(tr: Element, blockDiff: BlockDiff): void {
-    if (!blockDiff.wordDiff || blockDiff.wordDiff.length === 0) {
+    // Prefer groupedDiff if available, fall back to wordDiff
+    const changes = blockDiff.groupedDiff || blockDiff.wordDiff;
+    if (!changes || changes.length === 0) {
       return;
     }
 
@@ -406,9 +408,30 @@ export class DocxInPlaceExporter {
         firstPara.appendChild(pPr);
       }
 
-      // Add word-level changes
-      for (const change of blockDiff.wordDiff) {
-        if (change.added) {
+      // Add changes
+      for (const change of changes) {
+        if (this.isPhraseReplacement(change)) {
+          // Phrase replacement in table
+          const commentId = this.addComment(`Replaced in table: "${change.deletedText}" → "${change.insertedText}"`);
+          if (commentId >= 0) {
+            firstPara.appendChild(this.createCommentRangeStart(commentId));
+          }
+
+          // Add deleted phrase
+          const delElement = this.createDelElement();
+          const delRun = this.createRunWithText(change.deletedText + ' ', true);
+          delElement.appendChild(delRun);
+          firstPara.appendChild(delElement);
+
+          // Add inserted phrase
+          const insRun = this.createRunWithText(change.insertedText + ' ', false, true);
+          firstPara.appendChild(insRun);
+
+          if (commentId >= 0) {
+            firstPara.appendChild(this.createCommentRangeEnd(commentId));
+            firstPara.appendChild(this.createCommentReference(commentId));
+          }
+        } else if (change.added) {
           const commentId = this.addComment(`Added in table: "${change.value.trim()}"`);
           if (commentId >= 0) {
             firstPara.appendChild(this.createCommentRangeStart(commentId));
@@ -532,7 +555,9 @@ export class DocxInPlaceExporter {
   }
 
   private applyWordLevelChanges(para: Element, blockDiff: BlockDiff): void {
-    if (!blockDiff.wordDiff || blockDiff.wordDiff.length === 0) {
+    // Prefer groupedDiff if available, fall back to wordDiff
+    const changes = blockDiff.groupedDiff || blockDiff.wordDiff;
+    if (!changes || changes.length === 0) {
       return;
     }
 
@@ -545,9 +570,32 @@ export class DocxInPlaceExporter {
       para.appendChild(pPr);
     }
 
-    // Build new content based on word diff
-    for (const change of blockDiff.wordDiff) {
-      if (change.added) {
+    // Build new content based on changes
+    for (const change of changes) {
+      if (this.isPhraseReplacement(change)) {
+        // Phrase replacement - show deleted phrase then inserted phrase
+        const commentId = this.addComment(`Replaced: "${change.deletedText}" → "${change.insertedText}"`);
+
+        if (commentId >= 0) {
+          para.appendChild(this.createCommentRangeStart(commentId));
+        }
+
+        // Add deleted phrase with strikethrough
+        const delElement = this.createDelElement();
+        const delRun = this.createRunWithText(change.deletedText + ' ', true);
+        delElement.appendChild(delRun);
+        para.appendChild(delElement);
+
+        // Add inserted phrase with highlight
+        const insRun = this.createRunWithText(change.insertedText + ' ', false, true);
+        para.appendChild(insRun);
+
+        if (commentId >= 0) {
+          para.appendChild(this.createCommentRangeEnd(commentId));
+          para.appendChild(this.createCommentReference(commentId));
+        }
+
+      } else if (change.added) {
         // Insertion - use visual formatting only (no w:ins to avoid Word overriding colors)
         const commentId = this.addComment(`Added: "${change.value.trim()}"`);
 
@@ -588,6 +636,13 @@ export class DocxInPlaceExporter {
         para.appendChild(run);
       }
     }
+  }
+
+  /**
+   * Type guard to check if a change is a PhraseReplacement
+   */
+  private isPhraseReplacement(change: GroupedChange): change is PhraseReplacement {
+    return 'type' in change && change.type === 'phrase-replace';
   }
 
   private createDelElement(): Element {
